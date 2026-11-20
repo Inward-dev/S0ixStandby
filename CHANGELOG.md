@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.5.5 (unreleased): DMC image identified; issue form
+## 0.5.6 (unreleased): wake GPEs during the halt; SSDT-LIDWAKE
+
+- New `Wake GPEs armed during halt`: GPE0 enable bits read right after the
+  halt, before ACPI touches them. Shows which GPEs could actually wake the
+  machine. A ThinkPad E16 report (#7) found that AppleACPIPlatform arms the
+  wake GPEs from the devices' `_PRW` after the quiesce actions, so the bit
+  `-s0ixecwake` sets there may be cleared again; this property shows it.
+- New `acpi/SSDT-LIDWAKE.dsl` (experimental, per machine): a `_PRW` for the
+  lid device on the EC's GPE, the way that worked on the ThinkPad E16 (#7).
+  HP 840 G8 values (`\_SB.LID`, no existing `_PRW`, EC GPE 0x6E).
+
+## 0.5.5 (2026-11-20): DMC image identified; issue form
 
 - `Display DMC firmware` now says which display microcontroller image is in
   program RAM: Apple's built-in (`0x0b004040`, SSP base `0x6fc0`), Intel's

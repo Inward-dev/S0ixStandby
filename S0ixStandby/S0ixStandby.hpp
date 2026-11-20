@@ -243,6 +243,7 @@ private:
 	uint8_t ecEnAtHalt {0};                // EC GPE enable bit as macOS left it at the halt
 	uint16_t pm1StsAtWake {0};
 	uint8_t gpe0StsAtWake[16] {};
+	uint8_t gpe0EnAtWake[16] {};          // GPE0_EN right after the halt: what was armed
 	uint32_t ecWakeCount {0};
 	const char *ecGpeFrom {nullptr};
 	uint32_t ecTries {0};

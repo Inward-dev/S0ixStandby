@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.5.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.6.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -32,7 +32,7 @@ HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 | Silent deadlock at sleep (WhateverXe, TGL-H35 report) | Fixed on that machine by a local WhateverXe patch that loads Intel's DMC image (`tgl_dmc_ver2_12`) and re-uploads it at wake ([#3](https://github.com/labrouss/S0ixStandby/issues/3), [WhateverXe #157](https://github.com/b00t0x/WhateverXe/issues/157)). `s0ix-status.sh` shows which DMC image is loaded. Not known to be related to the `GFX0()` hang above |
 | External display across Deep Idle (WhateverXe, TGL) | With an HDMI display connected the panel stays dark after wake; the full modeset that would light it hangs the GPU (accelerator side, [WhateverXe #157](https://github.com/b00t0x/WhateverXe/issues/157), [#126](https://github.com/b00t0x/WhateverXe/issues/126)). **Unplug external displays before sleep**; plugging in after the wake works |
 | GPU hangs with hardware video (WhateverXe, TGL) | YouTube/Photo Booth decode hangs the GPU every ~10 s (`GPURestartSignaled`, CCS ring). Removing `AppleIntelTGLGraphicsVADriver.bundle` stops it (software decode, Metal stays). Not related to S0ixStandby |
-| Wake by lid or keyboard (HP 840 G8) | Only the power button wakes from Deep Idle. macOS turns the EC's GPE off for sleep and the lid has no `_PRW`; arming the EC GPE (`-s0ixecwake`) latches the lid event but doesn't wake the CPU. `Last wake source` in `s0ix-status.sh` shows what woke each sleep |
+| Wake by lid or keyboard (HP 840 G8) | Only the power button wakes from Deep Idle: the lid is an EC event, the lid device has no `_PRW`, and macOS arms only GPEs that come from a `_PRW`. `-s0ixecwake` sets the EC GPE by hand, but that bit can be cleared again before the halt (#7). Being tested: [`acpi/SSDT-LIDWAKE`](acpi/SSDT-LIDWAKE.dsl) gives the lid a `_PRW` on the EC GPE. `Wake GPEs armed during halt` in `s0ix-status.sh` shows what was really armed |
 | Rare dark display after wake | Seen twice, not reproducible with the same settings; please report with `macos/wake-report.sh` (use the issue form) |
 | Wi-Fi after wake | AirportItlwm reconnects after every wake (it stops the firmware for sleep) |
 
@@ -44,6 +44,7 @@ a sleep/wake sequence diagram.
 | Piece | Role |
 |---|---|
 | `acpi/SSDT-DEEPIDLE` | Defines `\_SB.LPS0` and `\_GPE.LXEN` (Darwin only). AppleACPIPlatform then publishes `IOPMDeepIdleSupported`, and macOS sleeps with type 7 (Deep Idle, XNU `acpi_idle_kernel()`) instead of ACPI S3 |
+| `acpi/SSDT-LIDWAKE` | Experimental, per machine: gives the lid device a `_PRW` on the EC's GPE so opening the lid can wake from Deep Idle. Other EC events (battery, AC) may then wake too |
 | `acpi/SSDT-BATFULL` | Optional, per machine: reports the battery as full when the EC stops charging just short of full on AC, which otherwise makes macOS dark-wake every ~5 min ([BATTERY-FULL](docs/BATTERY-FULL.md)). Needs a `_BST` → `XBST` rename (`tools/find-bst.py`) |
 | `S0ixStandby.kext` | Plain IOKit (no Lilu). Matches `PNP0D80`; calls the LPS0 `_DSM` (Intel / Microsoft / AMD) display-off + entry before the CPUs halt and exit + display-on after wake; resets an Intel Gen11/12 iGPU at wake if it kept its state; measures every sleep (SLP_S0 counter from ACPI LPIT, C-state MSRs, PCH power gating) |
 

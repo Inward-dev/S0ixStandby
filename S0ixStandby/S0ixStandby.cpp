@@ -1035,8 +1035,10 @@ IOReturn S0ixStandby::callPlatformFunction(const OSSymbol *functionName, bool wa
 			if (gpe0StsPort) {
 				// What woke the CPU: status bits are still set here (cleared later by ACPI).
 				pm1StsAtWake = pm1StsPort ? inw(pm1StsPort) : 0;
-				for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0StsAtWake); i++)
+				for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0StsAtWake); i++) {
 					gpe0StsAtWake[i] = inb((uint16_t)(gpe0StsPort + i));
+					gpe0EnAtWake[i] = inb((uint16_t)(gpe0EnPort + i));
+				}
 				wakeInfoValid = true;
 			}
 			if (pmcDump && counterPage && pmcHaltValid) {
@@ -1196,6 +1198,20 @@ void S0ixStandby::publishWakeInfo()
 			}
 	if (!n) snprintf(buf, sizeof(buf), "none latched (PM1_STS 0x%04x)", pm1StsAtWake);
 	setProperty("Last wake source", buf);
+
+	// GPE0_EN as it was during the halt (read before ACPI touches it at wake).
+	// macOS arms the wake GPEs from the devices' _PRW; a bit set by hand at the
+	// quiesce action may not survive until the halt.
+	n = 0;
+	for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0EnAtWake) && n < (int)sizeof(buf) - 24; i++)
+		for (uint32_t b = 0; b < 8; b++)
+			if (gpe0EnAtWake[i] & (1u << b)) {
+				uint32_t g = i * 8 + b;
+				n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%sGPE 0x%x%s", n ? ", " : "", g,
+				              g == ecGpe ? " (EC)" : "");
+			}
+	if (!n) snprintf(buf, sizeof(buf), "none");
+	setProperty("Wake GPEs armed during halt", buf);
 	if (ecGpe != 0xFFFFFFFF) {
 		snprintf(buf, sizeof(buf), "%s by macOS%s", ecEnAtHalt ? "enabled" : "disabled",
 		         ecWake && !ecEnAtHalt ? ", armed by -s0ixecwake" : "");
