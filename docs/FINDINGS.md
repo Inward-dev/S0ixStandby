@@ -421,6 +421,13 @@ framebuffer up (`SetState 1 → 0`), and its re-sleep is where the TGL framebuff
 hangs. The battery-state bug only multiplied those cycles. On the 840 G8 AC
 sleeps need both SSDT-BATFULL and `-s0ixacnortc`; with both they were clean.
 
+With both in place the hang is rare but not gone: after four clean AC sleeps in
+a row on 2026-11-12/13 (2.7 h, 2.5 h idle sleep, 7.6 h lid, 10 h), an idle sleep
+15 min after a normal wake hung GFX0 at sleep entry (2026-11-13 18:35,
+`FullyCharged = Yes`, `-s0ixacnortc`, no dark wake before it). So a plain sleep
+entry on AC can hang as well; the two measures only remove most of the
+framebuffer power cycles. Battery sleeps have not hung.
+
 How the battery state reaches GFX0 isn't proven. The working explanation is
 that it multiplies the framebuffer's sleep/wake cycles, and the TGL framebuffer
 under WhateverXe hangs in one of them now and then. WhateverXe 0.8.0 adds a

@@ -74,6 +74,17 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: failure
+    attributes:
+      label: How did the failure look?
+      description: These look like different bugs, so it matters which one you saw.
+      options:
+        - "pmset log shows: Failure during sleep: GFX0() : Some drivers failed to handle setPowerState"
+        - Silent hang (no panic, nothing useful in the log afterwards)
+        - Kernel panic (attach the report)
+        - Wakes, but display or GPU is dead
+        - Not applicable (it works)
+  - type: dropdown
     id: power
     attributes:
       label: Power source when it happens

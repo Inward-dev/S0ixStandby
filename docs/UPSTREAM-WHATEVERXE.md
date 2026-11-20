@@ -191,7 +191,9 @@ wakes. Even then, the re-sleep after an ordinary AC dark wake (CSPN, the 5th in
 2 h) hung `GFX0`. Every dark wake on AC lasted **45 s**. On battery all 17
 dark wakes of a 9 h night lasted **0 s**, and battery sleep never hangs. Only
 blocking RTC dark wakes on AC as well (S0ixStandby `-s0ixacnortc`) made AC
-sleeps clean (4/4 up to 98 min, then an 11 h 20 min night). So the trigger is the framebuffer's re-sleep
+sleeps mostly clean (about 12 of 13, up to 11 h 20 min).
+It still isn't gone: on 2026-11-13 an idle sleep 15 min after a normal
+power-button wake hung `GFX0` at sleep entry, with no dark wake before it. So the trigger is the framebuffer's re-sleep
 after a dark wake that ran long enough to involve it.
 
 **Relation to 0.8.0's dark-wake guard**
@@ -214,3 +216,19 @@ full system sleep/wake is unverified and on the to-do list; this is a
 reproducible case for it (one sleep on AC, ~15–45 min). Happy to run debug
 builds or collect anything that would show where the framebuffer's re-sleep
 stops.
+
+# Related upstream threads (2026-11)
+
+- [WhateverXe #157](https://github.com/b00t0x/WhateverXe/issues/157): TGL DMC.
+  Apple's TGL framebuffer uploads its built-in `_CSR_PATCH_AX` (12,868 bytes,
+  program[0] `0x0b004040`, SSP base `0x6fc0`), not Intel's `tgl_dmc_ver2_12`
+  (17,840 bytes, `0x0c004040`, `0x86fc0`). On a TGL-H35 (i5-11300H) loading the
+  Intel image in `hwInitializeCState` and re-uploading it in
+  `IntelAccelerator::systemDidWake` removed a silent deadlock at sleep; a valid
+  program in RAM was what mattered, not the event-handler table. The HP 840 G8
+  runs Apple's image and has no such deadlock; its `GFX0()` hang at sleep entry
+  is a different symptom.
+- [WhateverXe #126](https://github.com/b00t0x/WhateverXe/issues/126): removing
+  `-allow3d` gave 4 h without GPU resets (no Metal), pointing the external-display
+  hang after wake at the accelerator/forcewake path.
+

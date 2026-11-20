@@ -548,6 +548,22 @@ void S0ixStandby::refclkWake()
 	refclkCount++;
 }
 
+// Which DMC image is in program RAM. Values from TGL (issue #3, WhateverXe #157):
+// Apple's built-in _CSR_PATCH_AX starts with 0x0b004040 and uses SSP base
+// 0x6fc0; Intel's tgl_dmc_ver2_12 starts with 0x0c004040, SSP base 0x86fc0.
+static void dmcFormat(const uint32_t *reg, bool valid, char *out, size_t size)
+{
+	if (!valid) { snprintf(out, size, "not read"); return; }
+	uint32_t p = reg[kDispProg], ssp = reg[kDispSsp];
+	const char *kind =
+	    p == 0 || p == 0xFFFFFFFF ? "not loaded or not readable" :
+	    p == 0x0b004040 ? "Apple built-in (TGL _CSR_PATCH_AX)" :
+	    p == 0x0c004040 ? "Intel image (TGL v2.12)" : "unknown image";
+	const char *sspKind = ssp == 0x00006fc0 ? " (Apple)" : ssp == 0x00086fc0 ? " (Intel)" : "";
+	snprintf(out, size, "%s: program 0x%08x, ssp base 0x%08x%s, htp 0x%08x",
+	         kind, p, ssp, sspKind, reg[kDispHtp]);
+}
+
 void S0ixStandby::publishDisplay()
 {
 	if (!gpuMMIO) return;
@@ -555,9 +571,7 @@ void S0ixStandby::publishDisplay()
 	dispCapture(now, nullptr);
 	char buf[320];
 	if (now.valid) {
-		bool loaded = now.reg[kDispProg] != 0 && now.reg[kDispProg] != 0xFFFFFFFF;
-		snprintf(buf, sizeof(buf), "%s: program 0x%08x, ssp base 0x%08x, htp 0x%08x",
-		         loaded ? "loaded" : "not loaded", now.reg[kDispProg], now.reg[kDispSsp], now.reg[kDispHtp]);
+		dmcFormat(now.reg, true, buf, sizeof(buf));
 		setProperty("Display DMC firmware", buf);
 	}
 	dispFormat(now, buf, sizeof(buf));
@@ -577,6 +591,12 @@ void S0ixStandby::publishDisplay()
 		setProperty("Display power at sleep", buf);
 		dispFormat(snap.dispAtWake, buf, sizeof(buf));
 		setProperty("Display power at wake", buf);
+		// At the wake action the display well is usually still off, so the
+		// program RAM may read 0 there; "now" (after the driver) is what counts.
+		dmcFormat(snap.dispAtSleep.reg, snap.dispAtSleep.valid, buf, sizeof(buf));
+		setProperty("Display DMC at sleep", buf);
+		dmcFormat(snap.dispAtWake.reg, snap.dispAtWake.valid, buf, sizeof(buf));
+		setProperty("Display DMC at wake action", buf);
 		if (snap.dispAtSleep.valid && snap.dispAtWake.valid && snap.sleepCount != dispLoggedFor) {
 			dispLoggedFor = snap.sleepCount;
 			LOG("wake #%u: display DC5->DC6 +%u during sleep", snap.sleepCount,

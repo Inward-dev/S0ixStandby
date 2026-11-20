@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.5 (unreleased): DMC image identified; issue form
+
+- `Display DMC firmware` now says which display microcontroller image is in
+  program RAM: Apple's built-in (`0x0b004040`, SSP base `0x6fc0`), Intel's
+  `tgl_dmc_ver2_12` (`0x0c004040`, SSP base `0x86fc0`), not loaded, or unknown
+  (raw values always shown). New `Display DMC at sleep` and `Display DMC at
+  wake action` show the same at the two sleep actions (at the wake action the
+  display well is usually still off, so 0 there is expected). Values from the
+  TGL-H35 investigation in #3 / WhateverXe #157.
+- Issue form: new "How did the failure look?" field (GFX0() at sleep entry,
+  silent hang, panic, dead display), since these are different bugs.
+- Docs: #3 outcome. On TGL-H35 a silent deadlock at sleep was removed by a
+  local WhateverXe patch that loads Intel's DMC image and re-uploads it at
+  wake. This is not known to explain the `GFX0()` hang at sleep entry (the HP
+  840 G8 has that hang with Apple's built-in image and sleeps fine otherwise).
+
 ## 0.5.4 (2026-11-12): wake sources; experimental EC wake (`-s0ixecwake`); own log ring
 
 - New read-only report of what woke each Deep Idle sleep: `Last wake source`

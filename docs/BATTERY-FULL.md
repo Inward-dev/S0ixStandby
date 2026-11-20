@@ -20,7 +20,7 @@ setPowerState`, [FINDINGS §12](FINDINGS.md)) much more likely: every AC sleep a
 100 % froze within 15–45 minutes. The fix below removes the extra dark wakes.
 On that laptop the remaining normal AC dark wakes can still hang the
 framebuffer, so it also needs S0ixStandby's `-s0ixacnortc` on AC. With both,
-the same sleeps are clean.
+the hang became rare (about 1 in 13 sleeps so far), not impossible.
 
 ## Cause
 
@@ -112,7 +112,7 @@ Result on AC at 100 %:
 | neither | every ~4 min (gauging + OBC) | every sleep froze within 15–45 min |
 | `-s0ixacnortc` only | none while asleep, but a direct sleep after a wake froze twice | froze |
 | SSDT-BATFULL only | 5 in 2 h (3× OBC right after the sleep, calendar, CSPN), 45 s each | froze on the re-sleep after the 5th |
-| **both** | none while asleep | **clean**: 4/4 short sleeps (up to 98 min) and an **11 h 20 min** night |
+| **both** | none while asleep | **rare**: ~12 of 13 sleeps clean (4 short ones, 11 h 20 min, 2.7 h, 2.5 h, 7.6 h, 10 h); one idle sleep hung at entry on 2026-11-13 |
 
 The SSDT is useful on any machine that shows `stuck`, because it removes the
 frequent dark wakes. Whether `-s0ixacnortc` is also needed depends on whether
