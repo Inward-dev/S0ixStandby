@@ -14,6 +14,13 @@
  * charging. Check "Since boot ... dark wakes" in s0ix-status.sh, and test on
  * battery first.
  *
+ * HP EliteBook 840 G8 result (2026-11-21): lid wake works on battery
+ * (clamshell sleep, lid open wakes, GPE 0x6E armed during the halt, no extra
+ * wake on close). On AC: with the lid closed an EC event dark-woke it after
+ * 31 s and the re-sleep hung GFX0 (the known AC framebuffer hang); another
+ * AC lid wake ended in "Darkwake Exit Failure". Do not use it on AC there. _PRW is read once at boot, so it can't follow the
+ * power source.
+ *
  * Adapt per machine:
  *   - the lid path (\_SB.LID here; HP EliteBook 840 G8);
  *   - the EC GPE (0x6E here: the EC's _GPE, shown as "EC wake" in s0ix-status.sh);
