@@ -12,7 +12,9 @@
   HP 840 G8 values (`\_SB.LID`, no existing `_PRW`, EC GPE 0x6E). Result there:
   lid wake works on battery (`Wake GPEs armed during halt` lists GPE 0x6e);
   on AC an EC event dark-woke it with the lid closed and the re-sleep hung
-  `GFX0()` (also one `Darkwake Exit Failure`), so not for AC use.
+  `GFX0()` (also one `Darkwake Exit Failure`). On battery a lid wake became
+  a 45 s dark wake overnight and the re-sleep hung `GFX0()` too, so it is
+  not recommended on the 840 G8 at all.
   `-s0ixecwake` alone doesn't arm the GPE for the halt (cleared again).
 
 ## 0.5.5 (2026-11-20): DMC image identified; issue form

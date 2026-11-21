@@ -428,6 +428,12 @@ a row on 2026-11-12/13 (2.7 h, 2.5 h idle sleep, 7.6 h lid, 10 h), an idle sleep
 entry on AC can hang as well; the two measures only remove most of the
 framebuffer power cycles. Battery sleeps have not hung.
 
+Refined on 2026-11-21 with SSDT-LIDWAKE: on **battery** a lid/EC wake became a
+45 s dark wake (`due to LID/`), and the re-sleep after it hung `GFX0()`. RTC
+dark wakes on battery last 0 s and have never hung. So the trigger is not AC as
+such but **a long (45 s) dark wake followed by a re-sleep**: on AC every dark
+wake is that long, on battery only the lid/EC ones are.
+
 How the battery state reaches GFX0 isn't proven. The working explanation is
 that it multiplies the framebuffer's sleep/wake cycles, and the TGL framebuffer
 under WhateverXe hangs in one of them now and then. WhateverXe 0.8.0 adds a
