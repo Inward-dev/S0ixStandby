@@ -445,6 +445,49 @@ clears `EC0.ACPI` only for S4/S5), and no AC/battery ACPI event calls into
 `GFX0` (`_Q06`, `HWAK`, `PNOT`; `GFX0.AINT` only for brightness and
 slate/dock).
 
+### 12.2 Lid wake and the long-dark-wake trigger (2026-11-12 to 2026-11-21)
+
+**Why the lid can't wake.** On the HP the lid is an EC event (`_Q0A` →
+`Notify(LID)`) on the EC's GPE 0x6E, and `\_SB.LID` has no `_PRW`. Before the
+halt macOS leaves GPE 0x6E off (`EC GPE at last halt = disabled by macOS`), so
+only the fixed power button wakes. Setting the bit at the quiesce action
+(`-s0ixecwake`) didn't help: the lid event was latched but the CPU stayed
+halted. A ThinkPad E16 report (#7) explains it: AppleACPIPlatform rewrites
+GPE0_EN from the devices' `_PRW` after the quiesce actions. A first
+`-s0ixecwake` build also cleared the bit again at wake, which hung the HP while
+awake a minute later (fixed in 0.5.4).
+
+**With a `_PRW` it works.** `acpi/SSDT-LIDWAKE` gives `\_SB.LID` a `_PRW` on
+0x6E. `Wake GPEs armed during halt` then lists `GPE 0x69, 0x6d, 0x6e (EC),
+0x6f`, and opening the lid wakes the HP (`due to LID/HID Activity`, wake source
+`GPE 0x47, GPE 0x6e (EC)`, no PWRBTN). The same approach works on the ThinkPad
+E16 and an ADL-P ThinkBook (#4).
+
+**But it exposes the framebuffer hang.** Every EC event is now a wake source:
+
+| Test | What happened |
+|---|---|
+| AC, menu sleep, lid cycles | one lid wake became a dark wake whose promotion failed: `Darkwake Exit Failure` |
+| AC, short clamshell sleeps (24 s, 165 s, 94 s) | clean |
+| AC 100 %, lid closed ~50 min | EC dark wake after 31 s (`due to LID/`, 45 s), `GFX0()` hang on the re-sleep |
+| battery, overnight | RTC dark wakes 0 s, clean; one `LID/` dark wake of 45 s, `GFX0()` hang on its re-sleep |
+| AC charging 82→93 %, lid closed, + WhateverXe `-wex-s0-csb-resync` | EC dark wake every ~80 s (45 s each); ~10 re-sleeps clean, then `GFX0()` hang |
+
+**Conclusion.** The `GFX0()` hang follows **a ~45 s dark wake and its
+re-sleep**, on AC or battery. 0 s RTC dark wakes on battery never hung. On AC
+every dark wake lasts ~45 s, which is why AC looked like the trigger. The hang
+rate is roughly one per 3–15 such cycles, with or without
+`-wex-s0-csb-resync` (WhateverXe 0.8.3; it coexists with the GT reset but
+doesn't fix this on TGL; on the ADL-P ThinkBook it fixed a different wake
+deadlock). SSDT-LIDWAKE is therefore not usable on the 840 G8. It also gives a
+fast reproducer for WhateverXe: lid closed on AC while charging hangs within
+about 20 minutes.
+
+**DMC.** The HP runs Apple's built-in DMC image (`0x0b004040`, SSP `0x6fc0`).
+On a TGL-H35 a silent deadlock at sleep went away once WhateverXe loaded
+Intel's image (#3, WhateverXe #157). That is a different symptom from
+`GFX0()`, and not known to be related.
+
 ## Still to capture
 
 - A 30–60 min run of `s2idle-test.sh` for a tighter power number.

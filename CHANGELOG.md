@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.5.6 (unreleased): wake GPEs during the halt; SSDT-LIDWAKE
+## 0.5.7 (unreleased)
+
+- Docs: FINDINGS §12.2 (lid wake and the long-dark-wake trigger): the
+  `GFX0()` hang follows a ~45 s dark wake and its re-sleep, on AC or battery;
+  0 s RTC dark wakes on battery never hung. README limitation reworded from
+  "Freeze on AC" to that trigger; HOW-IT-WORKS documents the new properties
+  and the `-s0ixecwake` limitation; PLAN and HANDOFF status updated.
+- README: Alder Lake-P report (#4): accelerated Deep Idle wake works with
+  WhateverXe 0.8.3's `-wex-s0-csb-resync` and without `-s0ixgpureset`.
+- TESTING: on the HP 840 G8 (TGL) `-wex-s0-csb-resync` coexists with the GT
+  reset but doesn't fix the `GFX0()` re-sleep hang (hung after ~10 dark-wake
+  re-sleeps, same range as without it). Fast reproducer for that hang: lid
+  closed on AC while charging with SSDT-LIDWAKE (EC dark wake every ~80 s).
+
+## 0.5.6 (2026-11-21): wake GPEs during the halt; SSDT-LIDWAKE
 
 - New `Wake GPEs armed during halt`: GPE0 enable bits read right after the
   halt, before ACPI touches them. Shows which GPEs could actually wake the

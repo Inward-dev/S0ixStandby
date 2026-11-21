@@ -231,4 +231,9 @@ stops.
 - [WhateverXe #126](https://github.com/b00t0x/WhateverXe/issues/126): removing
   `-allow3d` gave 4 h without GPU resets (no Metal), pointing the external-display
   hang after wake at the accelerator/forcewake path.
+- 2026-11-21, issue 3 reproducer: with a lid `_PRW` on the EC GPE
+  (SSDT-LIDWAKE), lid closed, on AC while charging, the EC dark-wakes the HP
+  840 G8 every ~80 s (45 s each). The framebuffer hangs (`GFX0()`) on a
+  re-sleep after about 10 cycles (~20 min), also with WhateverXe 0.8.3's
+  `-wex-s0-csb-resync`. RTC dark wakes on battery (0 s) never hang.
 

@@ -33,5 +33,13 @@ Plan: L Linux baseline (done; selftest tool still to run locally) -> N0 macos/ch
 N1 SSDT-DEEPIDLE on the USB EFI -> phase 0 meter -> N2 helper kext + GitHub CI -> blockers -> polish.
 Hibernation fallback runs in parallel (restore 005 NOT fixed yet: boot.efi writes RTC; try AppleRtcRam).
 
+Current state (2026-11-21, 0.5.6 released, 0.5.7 in progress): Deep Idle works daily on battery with
+WhateverXe acceleration (GT reset at wake by default on Tiger Lake). On AC Apple's TGL framebuffer can hang
+(GFX0() setPowerState) on the re-sleep after a ~45 s dark wake; SSDT-BATFULL + -s0ixacnortc make it rare
+(FINDINGS §12, §12.1, §12.2). Lid wake works with acpi/SSDT-LIDWAKE (_PRW on EC GPE 0x6E) but its EC dark
+wakes trigger that hang, so it is not used on the 840 G8. The kext reports wake sources, the GPEs armed during
+the halt, the DMC image, the battery full state and its own log ("Recent log") through s0ix-status.sh.
+I send zips and commit them myself; keep personal data out of the repo.
+
 Next step: <say what you want to do first, e.g. "run the Linux baseline" or "start phase 0">.
 ```

@@ -3,7 +3,9 @@
 Each phase ends with a go/no-go decision. Phases 0–1 are read-only and cheap;
 they decide whether phase 2 is worth the effort.
 
-**Status 2026-11-05:** N0–N2 done (0.2.0). WhateverXe acceleration across sleep done (0.4.0, GPU reset at wake by default, FINDINGS §9). Next: overnight run with acceleration, testers on other laptops, then CNVi (FINDINGS §7–8, ~0.2 W).
+**Status 2026-11-21 (0.5.6):** Deep Idle with WhateverXe acceleration is daily-usable on the HP 840 G8 on battery (~0.8 %/h, nights clean). On AC the TGL framebuffer can hang on the re-sleep after a ~45 s dark wake (FINDINGS §12); SSDT-BATFULL + `-s0ixacnortc` make it rare. Lid wake works with a lid `_PRW` but triggers that hang, so not on the 840 G8. Reports from TGL-H35, ADL-P and RPL-H laptops (#3, #4, #7). Open: the `GFX0()` hang (WhateverXe), SLP_S0 (CNVi), lid wake without long dark wakes.
+
+**Status 2026-11-05:** N0–N2 done (0.2.0). WhateverXe acceleration across sleep done (0.4.0, GPU reset at wake by default, FINDINGS §9).
 
 **Order since 2026-11-02:** L → N0 → N1 → 0 (meter) → 1 → N2 → 3 → 4. Route B
 (2b) only if Deep Idle turns out to be unavailable on Tahoe.
