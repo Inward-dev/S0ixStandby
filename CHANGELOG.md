@@ -2,6 +2,13 @@
 
 ## 0.5.7 (unreleased)
 
+- **Fixed:** possible kernel stack overflow when formatting properties after
+  a wake (PR #8 by brandonedley). `n += snprintf(...)` could push `n` past the
+  buffer when output was truncated, and the next `size - n` wrapped around;
+  most exposed was the GPE list in `Last wake source` / `Wake GPEs armed
+  during halt`, whose inner loop had no bound. All 8 sites now clamp through
+  a helper (`snAdd`, and `snAddG` in S0ixGPU.cpp). Found as a stack-canary
+  panic during an RTC dark wake.
 - Docs: FINDINGS §12.2 (lid wake and the long-dark-wake trigger): the
   `GFX0()` hang follows a ~45 s dark wake and its re-sleep, on AC or battery;
   0 s RTC dark wakes on battery never hung. README limitation reworded from

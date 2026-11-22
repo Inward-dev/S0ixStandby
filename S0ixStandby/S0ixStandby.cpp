@@ -40,6 +40,12 @@
 
 #include "S0ixStandby.hpp"
 
+static inline void snAdd(size_t &n, size_t cap, int r)
+{
+	if (r <= 0 || cap == 0 || n >= cap) return;
+	size_t add = (size_t)r;
+	n = (add < cap - n) ? (n + add) : (cap - 1);
+}
 #include <IOKit/IOLib.h>
 #include <IOKit/acpi/IOACPIPlatformExpert.h>
 #include <IOKit/pwr_mgt/RootDomain.h>
@@ -802,8 +808,8 @@ OSArray *S0ixStandby::blockerNames(const uint8_t *b, char *line, size_t lineSize
 		if (ignored)
 			continue;
 		if (blockers) blockers->setObject(name);
-		if (n < lineSize)
-			n += snprintf(line + n, lineSize - n, " %s", name->getCStringNoCopy());
+		if (n + 1 < lineSize)
+			snAdd(n, lineSize, snprintf(line + n, lineSize - n, " %s", name->getCStringNoCopy()));
 	}
 	return blockers;
 }
@@ -843,8 +849,8 @@ void S0ixStandby::publishBlockers()
 		blockers->release();
 	}
 	char raw[80]; size_t r = 0; raw[0] = 0;
-	for (uint32_t i = 0; i < gatingBytes && r < sizeof(raw); i++)
-		r += snprintf(raw + r, sizeof(raw) - r, "%02x", b[i]);
+	for (uint32_t i = 0; i < gatingBytes && r + 1 < sizeof(raw); i++)
+		snAdd(r, sizeof(raw), snprintf(raw + r, sizeof(raw) - r, "%02x", b[i]));
 	setProperty("Last gating status at halt", raw);
 	LOG("IPs still powered at the Deep Idle halt (likely S0ix blockers):%s", n ? line : " none");
 }
@@ -1185,16 +1191,15 @@ void S0ixStandby::publishWakeInfo()
 		setProperty("Last wake source", "not recorded (not a Deep Idle halt)");
 		return;
 	}
-	char buf[192];
-	int n = snprintf(buf, sizeof(buf), "%s", "");
-	if (pm1StsAtWake & (1u << 8))  n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%sPWRBTN", n ? ", " : "");
-	if (pm1StsAtWake & (1u << 10)) n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%sRTC", n ? ", " : "");
-	for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0StsAtWake) && n < (int)sizeof(buf) - 24; i++)
-		for (uint32_t b = 0; b < 8; b++)
+	char buf[192]; size_t n = 0; buf[0] = 0;
+	if (pm1StsAtWake & (1u << 8))  snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n, "%sPWRBTN", n ? ", " : ""));
+	if (pm1StsAtWake & (1u << 10)) snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n, "%sRTC", n ? ", " : ""));
+	for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0StsAtWake) && n + 1 < sizeof(buf); i++)
+		for (uint32_t b = 0; b < 8 && n + 1 < sizeof(buf); b++)
 			if (gpe0StsAtWake[i] & (1u << b)) {
 				uint32_t g = i * 8 + b;
-				n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%sGPE 0x%x%s", n ? ", " : "", g,
-				              g == ecGpe ? " (EC)" : "");
+				snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n, "%sGPE 0x%x%s", n ? ", " : "", g,
+				                              g == ecGpe ? " (EC)" : ""));
 			}
 	if (!n) snprintf(buf, sizeof(buf), "none latched (PM1_STS 0x%04x)", pm1StsAtWake);
 	setProperty("Last wake source", buf);
@@ -1202,13 +1207,13 @@ void S0ixStandby::publishWakeInfo()
 	// GPE0_EN as it was during the halt (read before ACPI touches it at wake).
 	// macOS arms the wake GPEs from the devices' _PRW; a bit set by hand at the
 	// quiesce action may not survive until the halt.
-	n = 0;
-	for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0EnAtWake) && n < (int)sizeof(buf) - 24; i++)
-		for (uint32_t b = 0; b < 8; b++)
+	n = 0; buf[0] = 0;
+	for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0EnAtWake) && n + 1 < sizeof(buf); i++)
+		for (uint32_t b = 0; b < 8 && n + 1 < sizeof(buf); b++)
 			if (gpe0EnAtWake[i] & (1u << b)) {
 				uint32_t g = i * 8 + b;
-				n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%sGPE 0x%x%s", n ? ", " : "", g,
-				              g == ecGpe ? " (EC)" : "");
+				snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n, "%sGPE 0x%x%s", n ? ", " : "", g,
+				                              g == ecGpe ? " (EC)" : ""));
 			}
 	if (!n) snprintf(buf, sizeof(buf), "none");
 	setProperty("Wake GPEs armed during halt", buf);
@@ -1518,8 +1523,8 @@ void S0ixStandby::publish()
 					d->setObject(kCStates[i].name, num);
 					num->release();
 				}
-				if (n < sizeof(line))
-					n += snprintf(line + n, sizeof(line) - n, " %s=%llu%%", kCStates[i].name, (unsigned long long)pct);
+				if (n + 1 < sizeof(line))
+					snAdd(n, sizeof(line), snprintf(line + n, sizeof(line) - n, " %s=%llu%%", kCStates[i].name, (unsigned long long)pct));
 			}
 			setProperty("Last C-state percent", d);
 			d->release();
