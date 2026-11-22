@@ -488,6 +488,32 @@ On a TGL-H35 a silent deadlock at sleep went away once WhateverXe loaded
 Intel's image (#3, WhateverXe #157). That is a different symptom from
 `GFX0()`, and not known to be related.
 
+## 13. Alder/Raptor Lake: PC2/PC3 ceiling from DPOF in `_DSM` fn 5 (2026-11-22, #7)
+
+Reported by brandonedley on a ThinkPad X1 Yoga Gen 7 (ADL-P i7-1270P, 46A6,
+display 13 with real DC9), building on keenerdavid18's DPOF lead on a ThinkPad
+E16 Gen 3 (RPL-H).
+
+- Before the first sleep the package reaches PC6/PC8 while awake. After the
+  first sleep with every `_DSM` function, PC6+ is gone for the rest of the
+  boot, `PC3_DMI_NOT_BLOCKED` (pmtelemetry) counts up, and every Deep Idle
+  halt stays at PC2/PC3 with PC10 0 %.
+- Lenovo's Intel fn 5 does three things: `GUAM(1)`, `EC.ECNT(3)` (ESLP + a
+  GPIO), and `\_SB.PC00.DPOF = 1` (Type-C IOM REGBAR+0x40 bit 17, "all
+  monitors off"). Split one by one, only the DPOF write causes it. Once written,
+  even briefly, the IOM stays in that state until a reboot, so clearing DPOF
+  later doesn't help, and any A/B test later in the same boot is misleading.
+- Fixes, both from a fresh boot: `s0ixfn=0x198` (keeps Intel fn 3/4 and
+  Microsoft fn 7/8, skips fn 5/6), or keep all functions and stop DPOF from
+  being written: an OpenCore rename of the `DPOF` field in the TCSS SSDT
+  (`TACK, 1; DPOF, 1` → `TACK, 1; XDPO, 1`) plus an SSDT that defines a plain
+  `Name (DPOF, Zero)` in `\_SB.PC00`. With either, the X1 Yoga reached
+  **PC10 99 %** in Deep Idle (with his `-s0ixtcssd3` TCSS D3cold patch), about
+  1.5 W whole-system average overnight, NVMe not involved.
+- **Tiger Lake is different:** the HP 840 G8's fn 5 also writes `DPOF = 1`
+  (same reference code, ssdt14), and its halt reaches PC10 99 % anyway. So the
+  latch looks specific to the ADL/RPL IOM.
+
 ## Still to capture
 
 - A 30–60 min run of `s2idle-test.sh` for a tighter power number.

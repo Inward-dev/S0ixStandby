@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.5.7 (unreleased)
+## 0.5.8 (unreleased)
+
+- Docs: FINDINGS §13 and a README row: on Alder/Raptor Lake the Intel `_DSM`
+  fn 5 writes the Type-C IOM's DPOF bit, which holds the package at PC2/PC3
+  until a reboot; `s0ixfn=0x198` or a DPOF rename avoids it (found by
+  brandonedley, lead by keenerdavid18, #7). Tiger Lake writes it too but
+  reaches PC10.
+
+## 0.5.7 (2026-11-22)
 
 - **Fixed:** possible kernel stack overflow when formatting properties after
   a wake (PR #8 by brandonedley). `n += snprintf(...)` could push `n` past the
