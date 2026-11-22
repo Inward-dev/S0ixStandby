@@ -407,11 +407,18 @@ void S0ixStandby::gpuFormat(const GpuState &s, char *out, size_t size)
 		         s.cmd, s.pmcsr, s.bar1, s.bar0);
 		return;
 	}
-	size_t n = snprintf(out, size, "D%u cmd=%x pmcsr=%x bar0=%x:%x%s", s.pmcsr & 3, s.cmd, s.pmcsr,
-	                    s.bar1, s.bar0, s.decodeEnabled ? " (decode was off, enabled for the read)" : "");
-	for (uint32_t i = 0; i < kGpuRegCount && n < size; i++)
-		n += snprintf(out + n, size - n, " %s=%x", kGpuRegs[i].name, s.reg[i]);
-	if (s.canary && n < size) snprintf(out + n, size - n, " (canary written)");
+	auto snAddG = [&](size_t &off, int r) {
+		if (r <= 0 || size == 0 || off >= size) return;
+		size_t add = (size_t)r;
+		off = (add < size - off) ? (off + add) : (size - 1);
+	};
+	size_t n = 0;
+	if (size) out[0] = 0;
+	snAddG(n, snprintf(out + n, size - n, "D%u cmd=%x pmcsr=%x bar0=%x:%x%s", s.pmcsr & 3, s.cmd, s.pmcsr,
+	                   s.bar1, s.bar0, s.decodeEnabled ? " (decode was off, enabled for the read)" : ""));
+	for (uint32_t i = 0; i < kGpuRegCount && n + 1 < size; i++)
+		snAddG(n, snprintf(out + n, size - n, " %s=%x", kGpuRegs[i].name, s.reg[i]));
+	if (s.canary && n + 1 < size) snAddG(n, snprintf(out + n, size - n, " (canary written)"));
 }
 
 void S0ixStandby::publishGPU()
