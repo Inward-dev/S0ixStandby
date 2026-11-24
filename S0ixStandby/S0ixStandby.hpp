@@ -248,6 +248,11 @@ private:
 	const char *ecGpeFrom {nullptr};
 	uint32_t ecTries {0};
 	bool ecGpeWasOn {true};
+	// s0ixtrace=0xNN: stage breadcrumbs in a battery-backed CMOS byte, so the
+	// last sleep/wake step reached survives a forced power-off.
+	uint8_t traceByte {0};
+	void traceSetup();
+	void trace(uint8_t stage);
 	void setupWakeInfo();
 	void findEcGpe();
 	void publishEcWake();

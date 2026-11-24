@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.5.9 (unreleased)
+## 0.5.10 (unreleased)
+
+- New `s0ixtrace=0xNN` (diagnostic, opt-in): the kext writes a stage code to a
+  battery-backed CMOS RAM byte at each sleep/wake step (sleep action, after the
+  `_DSM` entry, last step before the Deep Idle halt, back from the halt, wake
+  action, wake completed) and reports the previous boot's last stage at start
+  (`Sleep trace`). Shows where a hang stopped even after a forced power-off.
+  The byte must be one the firmware doesn't use; bytes below 0x38 are refused.
+  docs/SLEEP-TRACE.md. Asked for in #9.
+
+## 0.5.9 (2026-11-24)
 
 - Fixed: the DMC image label was wrong outside Tiger Lake (a ThinkPad E16
   with NootedGreen's ADL-P image was labelled "Apple built-in (TGL …)", #7).

@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.9.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.10.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -94,6 +94,7 @@ XCPM stops at core C6 in Deep Idle; with Ice Lake it reaches C10
 | `-s0ixgpureset` | reset the iGPU at Deep Idle wake on Gen11/12 CPUs other than Tiger Lake too (off there by default, untested) |
 | `-s0ixwifipm` | experimental: Wi-Fi PCI function to D3 for sleep through IOPCIFamily (CNVi blocker work) |
 | `-s0ixecwake` | experimental: keep the embedded controller's GPE armed during Deep Idle, so EC events can wake the machine: on many laptops (HP 840 G8 included) **opening the lid** is an EC event (`_Qxx` → `Notify(LID)`), and the lid device has no `_PRW`, so macOS leaves that GPE off and only the power button wakes. Other EC events (battery, AC, thermal) may then cause extra dark wakes: check `EC wakes` and `Last wake source` in `s0ix-status.sh`. `s0ixecgpe=0xNN` sets the EC's GPE number if it isn't found (HP 840 G8: `0x6e`). **HP 840 G8: no lid wake with it** (the lid's EC event is latched during standby but only delivered once the power button wakes the machine); kept for other laptops |
+| `s0ixtrace=0xNN` | diagnostic: write a stage code to battery-backed CMOS byte `0xNN` at each sleep/wake step, so after a hang and forced power-off the next boot reports the last step reached (`Sleep trace` in `s0ix-status.sh`). Choose a byte your firmware doesn't use: [SLEEP-TRACE](docs/SLEEP-TRACE.md) |
 | `-s0ixacnortc` | experimental: **while on AC**, Deep Idle can't be woken by the RTC alarm (no maintenance dark wakes; **recommended on AC** on the 840 G8: avoids the dark-wake re-sleeps that can hang the TGL framebuffer, FINDINGS §12). Power button and lid still wake; timed wakes (`pmset schedule`, `relative wake`) don't fire while plugged in |
 | `-s0ixrefclk` | experimental: at a Deep Idle sleep, with the display core already down (DC9), set the PCH display reference clock workaround i915 applies on suspend (`SOUTH_CHICKEN1` bit 7); cleared at wake |
 | `-s0ixgpuprobe` | debugging: also probe an idle iGPU and keep the last result in NVRAM (`nvram s0ix-gpu-last`) |

@@ -167,6 +167,25 @@ static const uint8_t  kCmosAie  = 1u << 5;       // RTC register B: alarm interr
 static inline uint8_t cmosRead(uint8_t reg) { outb(0x70, reg); return inb(0x71); }
 static inline void cmosWrite(uint8_t reg, uint8_t v) { outb(0x70, reg); outb(0x71, v); }
 
+// CMOS RAM byte for the sleep trace: 0x38-0x7F in the standard bank (0x70/0x71),
+// 0x80-0xFF in the extended bank (0x72/0x73). Below 0x38 are the RTC registers,
+// the status bytes and the standard checksum area.
+static inline uint8_t cmosRamRead(uint8_t idx)
+{
+	if (idx & 0x80) { outb(0x72, idx); return inb(0x73); }
+	outb(0x70, idx); return inb(0x71);
+}
+static inline void cmosRamWrite(uint8_t idx, uint8_t v)
+{
+	if (idx & 0x80) { outb(0x72, idx); outb(0x73, v); return; }
+	outb(0x70, idx); outb(0x71, v);
+}
+
+enum : uint8_t {
+	kTraceBoot = 0xA0, kTraceSleepStart, kTraceDsmEntry, kTraceSleepEnd, kTraceQuiesce,
+	kTraceActive, kTraceWakeStart, kTraceWakeEnd, kTraceDone,
+};
+
 // ACPI ToUUID() byte order: first three fields little-endian, rest as written.
 static bool guidToBytes(const char *s, uint8_t out[16])
 {
@@ -413,6 +432,7 @@ bool S0ixStandby::start(IOService *provider)
 		setProperty("AC RTC wake block", "off (boot-arg -s0ixacnortc)");
 	}
 
+	traceSetup();
 	setupWakeInfo();
 
 	if (workLoop) {
@@ -443,7 +463,7 @@ bool S0ixStandby::start(IOService *provider)
 	// after start() succeeds (IOService.cpp, IOInstallServiceSleepPlatformActions).
 	setProperty("IOPlatformSleepAction", (unsigned long long)kActionPriority, 32);
 	setProperty("IOPlatformWakeAction", (unsigned long long)kActionPriority, 32);
-	if (cstateMask || (pmcDump && counterPage) || gatingPtr || pm1EnPort || gpe0StsPort) {
+	if (cstateMask || (pmcDump && counterPage) || gatingPtr || pm1EnPort || gpe0StsPort || traceByte) {
 		// Boot-CPU snapshot right around the Deep Idle halt (MSR/MMIO reads only).
 		setProperty("IOPlatformQuiesceAction", (unsigned long long)kActionPriority, 32);
 		setProperty("IOPlatformActiveAction", (unsigned long long)kActionPriority, 32);
@@ -1013,6 +1033,7 @@ IOReturn S0ixStandby::callPlatformFunction(const OSSymbol *functionName, bool wa
 		if (functionName->isEqualTo("IOPlatformWakeAction"))  { onWake();  return kIOReturnSuccess; }
 		// Interrupts are disabled in these two: MSR reads only, no locks/logging.
 		if (functionName->isEqualTo("IOPlatformQuiesceAction")) {
+			trace(kTraceQuiesce);
 			if (rtcBlocked) outw(pm1EnPort, (uint16_t)(inw(pm1EnPort) & ~kPm1RtcEn));
 			if (ecArm) {
 				// Last thing before the halt: macOS has set up its wake GPEs.
@@ -1035,6 +1056,7 @@ IOReturn S0ixStandby::callPlatformFunction(const OSSymbol *functionName, bool wa
 			return kIOReturnSuccess;
 		}
 		if (functionName->isEqualTo("IOPlatformActiveAction")) {
+			trace(kTraceActive);
 			// Right after the halt: the PMC's latched LPM status (latched at
 			// package C10 entry by default) shows the state during the sleep.
 			if (cstateMask && tscAtQuiesce) { readHalt(haltAtActive); tscAtActive = rdtsc(); haltValid = true; }
@@ -1099,6 +1121,43 @@ bool S0ixStandby::setupRtcBlock()
 	setProperty("AC RTC wake block", buf);
 	LOG("AC RTC wake block %s", buf);
 	return true;
+}
+
+void S0ixStandby::trace(uint8_t stage)
+{
+	if (traceByte) cmosRamWrite(traceByte, stage);
+}
+
+void S0ixStandby::traceSetup()
+{
+	uint32_t idx = 0;
+	if (!PE_parse_boot_argn("s0ixtrace", &idx, sizeof(idx))) {
+		setProperty("Sleep trace", "off (boot-arg s0ixtrace=0xNN, see docs/SLEEP-TRACE.md)");
+		return;
+	}
+	char buf[200];
+	if (idx < 0x38 || idx > 0xFF) {
+		snprintf(buf, sizeof(buf), "refused: CMOS byte 0x%x (allowed 0x38-0xFF)", idx);
+		setProperty("Sleep trace", buf);
+		LOG("sleep trace %s", buf);
+		return;
+	}
+	static const char *const kStage[] = {
+		"booted, no sleep since", "sleep action started", "_DSM entry returned",
+		"sleep action finished", "last step before the Deep Idle halt",
+		"back from the halt", "wake action started", "wake action finished",
+		"wake completed",
+	};
+	uint8_t prev = cmosRamRead((uint8_t)idx);
+	if (prev >= kTraceBoot && prev <= kTraceDone)
+		snprintf(buf, sizeof(buf), "CMOS 0x%02x: previous boot reached 0x%02x (%s)",
+		         idx, prev, kStage[prev - kTraceBoot]);
+	else
+		snprintf(buf, sizeof(buf), "CMOS 0x%02x: no trace from the previous boot (byte was 0x%02x)", idx, prev);
+	setProperty("Sleep trace", buf);
+	LOG("sleep trace %s", buf);
+	traceByte = (uint8_t)idx;
+	trace(kTraceBoot);
 }
 
 // FADT event blocks and the EC's GPE: lets every sleep report what woke it
@@ -1340,6 +1399,7 @@ void S0ixStandby::onSleep()
 	if (IOPMrootDomain *root = getPMRootDomain())
 		if (OSNumber *n = OSDynamicCast(OSNumber, root->getProperty("IOPMSystemSleepType")))
 			lastSleepType = n->unsigned32BitValue();
+	trace(kTraceSleepStart);
 
 	counterAtSleep = 0;
 	readCounter(counterAtSleep);
@@ -1360,6 +1420,7 @@ void S0ixStandby::onSleep()
 	if (dsmEnabled && lastSleepType == kSleepTypeDeepIdle &&
 	    (dsmMask[kIntel] || dsmMask[kMicrosoft] || dsmMask[kAMD])) {
 		dsmEntry();
+		trace(kTraceDsmEntry);
 		entered = true;
 	}
 	// Last step: nothing after us may touch PM1_EN before the halt.
@@ -1378,12 +1439,14 @@ void S0ixStandby::onSleep()
 	ecArm = ecWake && gpe0EnPort && ecGpe != 0xFFFFFFFF && lastSleepType == kSleepTypeDeepIdle;
 	ecArmed = false;
 	wakeInfoValid = false;
+	trace(kTraceSleepEnd);
 	DBG("sleep: type %u, dsm %s, counter %llu, rtc wake %s", lastSleepType, entered ? "entry" : "skipped",
 	    counterAtSleep, rtcBlocked ? "blocked (AC)" : "allowed");
 }
 
 void S0ixStandby::onWake()
 {
+	trace(kTraceWakeStart);
 	// First: give RTC wakes back before anything else runs.
 	if (rtcBlocked) {
 		(void)cmosRead(0x0C);                    // drop an alarm flag raised while blocked
@@ -1445,6 +1508,7 @@ void S0ixStandby::onWake()
 		totalResidencyUs += ((counterAtWake - counterAtSleep) & mask) * 1000000ULL / counterFreq;
 	}
 	pendingPublish = true;
+	trace(kTraceWakeEnd);
 
 	// Do not touch the registry from the platform-action context.
 	if (publishTimer)
@@ -1476,6 +1540,7 @@ void S0ixStandby::publish()
 {
 	if (!pendingPublish) return;
 	pendingPublish = false;
+	trace(kTraceDone);
 	if (d3Unbound) scanUnbound();
 
 	uint64_t ticks = 0, residencyUs = 0;
