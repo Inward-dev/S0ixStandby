@@ -127,6 +127,38 @@ the `_DSM` calls (0 = never, which would explain the 2 W).
 - If it does not wake or panics: boot with `-s0ixoff`, collect the panic file
   and `log show --last 30m --predicate 'eventMessage CONTAINS "S0ixStandby"'`.
 
+## Finding what blocks PC10 (PMC telemetry diff)
+
+When Deep Idle works but the package stops at PC2/PC3, the PMC's own counters
+tell which side keeps it awake. Method by keenerdavid18 (#7): read the IOReport
+group `pmtelemetry_cpu` / `cstate_counter` before and after one sleep, with a
+small reader (his `pmtel.c` is attached to #7; build with
+`clang -O2 -o pmtel pmtel.c -framework CoreFoundation -lIOReport`).
+
+```
+./pmtel 0.25 pmtelemetry_cpu cstate_counter > before.txt
+sudo pmset relative wake 240; sudo pmset sleepnow    # hands off until it wakes
+./pmtel 0.25 pmtelemetry_cpu cstate_counter > after.txt
+```
+
+The counters are 16-bit: per counter, the delta is `(after - before) & 0xFFFF`.
+Also take a 10 s awake-idle sample, because the ~10–15 s awake around the
+sleep adds to every delta.
+
+What the counters have meant so far (FINDINGS §13, §13.1):
+
+| Counter climbing during the halt | Points to |
+|---|---|
+| `PC3_DMI_NOT_BLOCKED` | DPOF latch from `_DSM` fn 5 on ADL/RPL (fix: `s0ixfn=0x198` or the DPOF rename, fresh boot) |
+| `PC2R_DEEP_WAKE_OPI_DMI_SQUELCH`, `PC7_PCH_NACK`, `PC0_WAKE_PCH_INT` | A PCH-side device active during the halt (polling driver, Wi-Fi/BT, USB device) |
+| `PC2R_DE_BLOCK_FAIL`, `PC6_PC8_DE_BUFFER_FILL` alone | Display engine; with the PCH counters too, they usually just follow the PCH wakeups |
+
+On a machine that reaches PC10 (X1 Yoga Gen 7) all of these stay near 0 during
+the halt and `PKGC_C10_ENTRANCE` goes up by about one. To find the PCH device,
+remove candidates one at a time (VoodooI2C first if the touchpad may be
+polling) and repeat the diff; or boot Linux, run `rtcwake -m freeze -s 60`
+and read `/sys/kernel/debug/pmc_core/substate_status_registers` and `ltr_show`.
+
 ## Wake failure protocol
 
 For every sleep test, especially long ones (30 min+), note the answers below.

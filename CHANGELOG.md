@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.11 (unreleased)
+
+- Docs: PMC telemetry diff (`pmtelemetry_cpu` / `cstate_counter`, method and
+  reader by keenerdavid18, #7) as a way to find what keeps the package at
+  PC2/PC3: TESTING.md "Finding what blocks PC10". FINDINGS §13.1: on the
+  ThinkPad E16 the blocker is PCH-side (DMI squelch wakes, PCH NACKs and PCH
+  interrupts at 6–33/s during the halt, all ~0 on the X1 Yoga Gen 7 at PC10);
+  the display counters follow those wakeups; the CPU spoof is ruled out. The
+  X1 Yoga Gen 7 reaches PC10 99 % without `-s0ixtcssd3` (brandonedley).
+
 ## 0.5.10 (2026-11-24)
 
 - New `s0ixtrace=0xNN` (diagnostic, opt-in): the kext writes a stage code to a

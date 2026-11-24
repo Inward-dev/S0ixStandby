@@ -522,13 +522,50 @@ E16 Gen 3 (RPL-H).
   state (idle links gave PC2 73–79 %, a non-idle link PC3 99 %). At the halt
   the PMC shows OPIO / main PLL / fast crystal not off with aggregate LTR "no
   requirement". Linux s2idle on the same machine reaches PC10 93.7 % and SLP_S0.
-  Open; differences to the working X1 Yoga include the graphics kext
-  (NootedGreen vs WhateverXe with display power-off at sleep) and the CPU
-  spoof.
+  Open; the PMC telemetry diff in §13.1 points to PCH-side activity (the CPU
+  spoof is ruled out there).
 - **DMC label caveat:** the E16 (ADL-P DMC loaded by NootedGreen) reads
   program[0] `0x0b004040` with SSP base `0x86fc0`. program[0] is a header word
   shared by several images, so from 0.5.9 the kext names the image only on
   Tiger Lake and only when both program[0] and the SSP base match.
+
+### 13.1 E16: the blocker is on the PCH side (2026-11-24, #7)
+
+keenerdavid18 compared the PMC telemetry counters (IOReport group
+`pmtelemetry_cpu`, subgroup `cstate_counter`, 16-bit counters) before and after
+one ~4 min Deep Idle halt on the E16, and brandonedley ran the same diff on the
+X1 Yoga Gen 7 across a PC10 99 % halt.
+
+| Counter, during the halt | E16 (PC3 99 %) | X1Y7 (PC10 99 %) |
+|---|---|---|
+| `PC2R_DEEP_WAKE_OPI_DMI_SQUELCH` | ~33/s (awake ~0/s) | 0 for the whole boot |
+| `PC7_PCH_NACK` | ~22/s (awake 0/s) | ~0 (delta = awake time) |
+| `PC0_WAKE_PCH_INT` | ~6/s | ~0 |
+| `PC2R_DE_BLOCK_FAIL` | ~31/s | ~0 (≈3000/s while scanning out awake) |
+| `PC6_PC8_DE_BUFFER_FILL` | ~11/s | ~0 |
+| `PC3_DMI_NOT_BLOCKED` (DPOF latch) | 0 | 0 |
+
+- On the E16, something behind the PCH makes DMI/OPI traffic and interrupts
+  about 30 times a second during the halt, and the PCH NACKs every deeper
+  package entry. On the X1 these counters are silent.
+- The display counters follow the wakeup rate (DE_BLOCK_FAIL ~31/s vs DMI
+  squelch wakes ~33/s), while every pipe, plane, transcoder, DBUF and power-well
+  register reads 0 under DC9. Most likely each PCH wakeup also re-checks the
+  display engine and counts a failure: a consequence, not the cause. This fits
+  the E16 staying at PC3 with the display core kept up too.
+- A steady ~30 Hz suggests polling. Suspects on ADL/RPL hacks: VoodooI2C in
+  polling mode (touchpad GPIO interrupt not pinned), CNVi Wi-Fi/Bluetooth kexts,
+  a USB device keeping xHCI busy. To check: remove one at a time and rerun the
+  diff until `OPI_DMI_SQUELCH` stays at 0, or read Linux `intel_pmc_core`
+  (`substate_status_registers`, `ltr_show`) after an s2idle cycle. See
+  TESTING.md "Finding what blocks PC10".
+- The E16 also tested brandonedley's Ice Lake CPU spoof (model 126) instead of
+  Comet Lake: core RAPL power during the halt dropped from ~1.7 W to ~0.7 W, the
+  package still stayed at PC3 99 %. The spoof is not the PC3 cause.
+- **X1 Yoga Gen 7 recipe:** from a fresh boot without `-s0ixtcssd3`, PC10 99 %
+  with SSDT-NODPOF (DPOF rename), display power wells and DBUF off + DC9, and
+  NVMe L1.2/LTR. TCSS D3cold is not needed there (IOM `0x00045300`, TD3C=0,
+  DPOF=1 at the register, latch avoided by the rename).
 
 ## Still to capture
 
