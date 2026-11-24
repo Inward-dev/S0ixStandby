@@ -34,6 +34,18 @@ A `Failure during sleep: GFX0()` hang should leave `0xA0`, `0xA7` or `0xA8`
 the end of the previous cycle). An "EFI/Bootrom Failure after
 last point of entry to sleep" hang should leave `0xA1` or later.
 
+## Checking that the byte works
+
+At start the kext writes `0xA0` and reads it straight back. `Sleep trace` ends
+in `write check ok`, or `write check FAILED (wrote 0xa0, read 0x..)`. A failed
+check means the chipset ignores writes to that byte; on Intel chipsets the
+extended bank (`0x80`–`0xFF`) can be disabled or locked by the firmware. Try a
+byte in the standard bank (`0x38`–`0x7F`) then.
+
+If the check is ok but every boot still reports `no trace from the previous
+boot (byte was 0x00)`, the firmware clears that byte at power-on: try another
+one. `Sleep trace now` shows the byte's value after the last wake.
+
 ## Choosing a CMOS byte
 
 The kext refuses bytes below `0x38` (RTC clock and status registers and the

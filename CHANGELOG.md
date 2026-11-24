@@ -8,7 +8,9 @@
   action, wake completed) and reports the previous boot's last stage at start
   (`Sleep trace`). Shows where a hang stopped even after a forced power-off.
   The byte must be one the firmware doesn't use; bytes below 0x38 are refused.
-  docs/SLEEP-TRACE.md. Asked for in #9.
+  At start the byte is read back (`write check ok` / `FAILED`), and `Sleep
+  trace now` shows its value after each wake, to catch bytes the chipset
+  ignores or the firmware clears. docs/SLEEP-TRACE.md. Asked for in #9.
 
 ## 0.5.9 (2026-11-24)
 

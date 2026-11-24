@@ -1154,10 +1154,19 @@ void S0ixStandby::traceSetup()
 		         idx, prev, kStage[prev - kTraceBoot]);
 	else
 		snprintf(buf, sizeof(buf), "CMOS 0x%02x: no trace from the previous boot (byte was 0x%02x)", idx, prev);
-	setProperty("Sleep trace", buf);
-	LOG("sleep trace %s", buf);
 	traceByte = (uint8_t)idx;
 	trace(kTraceBoot);
+	// Read back at once: tells a byte the chipset ignores (extended bank
+	// disabled or locked) apart from one the firmware clears at boot.
+	uint8_t back = cmosRamRead(traceByte);
+	size_t n = strlen(buf);
+	if (back == kTraceBoot)
+		snprintf(buf + n, sizeof(buf) - n, "; write check ok");
+	else
+		snprintf(buf + n, sizeof(buf) - n, "; write check FAILED (wrote 0xa0, read 0x%02x): try another byte%s",
+		         back, (traceByte & 0x80) ? " or the standard bank (0x38-0x7f)" : "");
+	setProperty("Sleep trace", buf);
+	LOG("sleep trace %s", buf);
 }
 
 // FADT event blocks and the EC's GPE: lets every sleep report what woke it
@@ -1541,6 +1550,11 @@ void S0ixStandby::publish()
 	if (!pendingPublish) return;
 	pendingPublish = false;
 	trace(kTraceDone);
+	if (traceByte) {
+		char t[48];
+		snprintf(t, sizeof(t), "CMOS 0x%02x = 0x%02x", traceByte, cmosRamRead(traceByte));
+		setProperty("Sleep trace now", t);
+	}
 	if (d3Unbound) scanUnbound();
 
 	uint64_t ticks = 0, residencyUs = 0;
