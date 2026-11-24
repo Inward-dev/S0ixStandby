@@ -165,6 +165,9 @@ private:
 		GpuState gpuAtSleep, gpuAtWake;
 		uint32_t gpuVerdict, gpuResetResult, gpuResetUs, gpuEnginesReady;
 		uint16_t wifiPmcsrSleep, wifiPmcsrWake;
+		bool hdaValid;
+		uint16_t hdaPmSleep, hdaPmWake;
+		uint32_t hdaPgSaved, hdaPgAfter, hdaCgSaved, hdaCgAfter;
 		DispState dispAtSleep, dispAtWake;
 	};
 	Snapshot snap {};
@@ -226,6 +229,22 @@ private:
 	uint16_t wifiPmcsrSleep {0xFFFF}, wifiPmcsrWake {0xFFFF};
 	static void wifiTimerFired(OSObject *owner, IOTimerEventSource *sender);
 	bool setupWifiPM();
+
+	// -s0ixhdapm: Intel cAVS/HDA (00:1f.3) clock/power gating across Deep Idle.
+	// AppleHDAController leaves PCI CGCTL (0x48) at 0x00000000 in D3hot, keeping
+	// AC_Ring_Osc, OPIDMI_PG, and GPIO_COM5_VNN_REQ awake (~0.4-0.6 W). Restoring
+	// Intel PCH CGCTL bits (default 0x003F01FF; override with s0ixhdacg=<mask>)
+	// and PGCTL (ADSPPGD=0, LSRMD=1) in PCI config space during Deep Idle clears
+	// those gates and restores the saved values before AppleHDAController wakes.
+	uint32_t hdaCgMask {0};
+	IOPCIDevice *hdaDev {nullptr};
+	UInt8 hdaPmCap {0};
+	uint16_t hdaDid {0}, hdaPmSleep {0xFFFF}, hdaPmWake {0xFFFF};
+	uint32_t hdaPgSaved {0}, hdaPgAfter {0}, hdaCgSaved {0}, hdaCgAfter {0};
+	bool hdaTouched {false}, hdaSleepValid {false};
+	void setupHdaPM();
+	void hdaSleep();
+	void hdaWake();
 
 	// -s0ixacnortc: no RTC alarm wakes from Deep Idle while on AC
 	bool acNoRtc {false}, onAC {false}, rtcBlocked {false};

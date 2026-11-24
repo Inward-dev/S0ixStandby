@@ -29,6 +29,10 @@
 //              -s0ixwifipm let IOPCIFamily put the Wi-Fi PCI function in D3 for
 //                          sleep (enablePCIPowerManagement), with _PS3 and config
 //                          restore on wake (experimental)
+//              -s0ixhdapm  restore Intel cAVS/HDA (00:1f.3) PCI CGCTL (0x48)
+//                          clock-gating bits (0x003F01FF) and PGCTL (0x44) across
+//                          Deep Idle, restoring saved values on wake (s0ixhdacg=N
+//                          overrides the CGCTL OR mask)
 //              -s0ixgpuprobe  also probe an idle GPU (canary) and keep the last
 //                          result in NVRAM (s0ix-gpu-last); for debugging
 //              s0ixfn=N    bitmask of _DSM functions allowed to run, e.g.
@@ -330,6 +334,8 @@ bool S0ixStandby::start(IOService *provider)
 	gpuReset = !bootArg("-s0ixnogpureset");
 	gpuResetForced = bootArg("-s0ixgpureset");
 	wifiPM = bootArg("-s0ixwifipm");
+	hdaCgMask = bootArg("-s0ixhdapm") ? 0x003F01FFu : 0u;
+	{ uint32_t m = 0; if (PE_parse_boot_argn("s0ixhdacg", &m, sizeof(m))) hdaCgMask = m; }
 	refclkWA = bootArg("-s0ixrefclk");
 	acNoRtc = bootArg("-s0ixacnortc");
 	ecWake = bootArg("-s0ixecwake");
@@ -529,6 +535,7 @@ void S0ixStandby::free()
 	OSSafeReleaseNULL(gpuTimer);
 	OSSafeReleaseNULL(wifiTimer);
 	OSSafeReleaseNULL(wifiDev);
+	OSSafeReleaseNULL(hdaDev);
 	OSSafeReleaseNULL(acTimer);
 	OSSafeReleaseNULL(battTimer);
 	OSSafeReleaseNULL(workLoop);
@@ -1007,6 +1014,75 @@ void S0ixStandby::d3Enter()
 	IOLockUnlock(d3Lock);
 }
 
+void S0ixStandby::setupHdaPM()
+{
+	if (!hdaCgMask) return;
+	if (!hdaDev) {
+		OSDictionary *match = serviceMatching("IOPCIDevice");
+		OSIterator *it = match ? getMatchingServices(match) : nullptr;
+		OSSafeReleaseNULL(match);
+		if (!it) return;
+		while (OSObject *o = it->getNextObject()) {
+			IOPCIDevice *dev = OSDynamicCast(IOPCIDevice, o);
+			if (!dev || dev->getBusNumber() != 0 || dev->getDeviceNumber() != 0x1f || dev->getFunctionNumber() != 3)
+				continue;
+			uint32_t id = dev->configRead32(kIOPCIConfigVendorID);
+			uint32_t cls = dev->configRead32(kIOPCIConfigClassCode) >> 16;
+			if ((id & 0xFFFF) != 0x8086 || (cls != 0x0403 && cls != 0x0401))
+				continue;
+			UInt8 pm = 0;
+			if (!dev->findPCICapability(kIOPCIPowerManagementCapability, &pm) || !pm)
+				continue;
+			dev->retain();
+			hdaDev = dev;
+			hdaPmCap = pm;
+			hdaDid = (uint16_t)(id >> 16);
+			break;
+		}
+		it->release();
+		if (!hdaDev) {
+			setProperty("HDA PCI PM", "no Intel HDA function at 00:1f.3 found");
+			return;
+		}
+	}
+	char buf[128];
+	snprintf(buf, sizeof(buf), "00:1f.3 8086:%04x: on (-s0ixhdapm, CGCTL mask 0x%08x), PGCTL 0x%08x, CGCTL 0x%08x",
+	         hdaDid, hdaCgMask, hdaDev->configRead32(0x44), hdaDev->configRead32(0x48));
+	setProperty("HDA PCI PM", buf);
+}
+
+void S0ixStandby::hdaSleep()
+{
+	hdaTouched = false;
+	hdaSleepValid = false;
+	if (!hdaCgMask || !hdaDev || !hdaPmCap) return;
+	hdaPmSleep = hdaDev->configRead16(hdaPmCap + 4);
+	if (hdaPmSleep == 0xFFFF) return;
+	hdaPgSaved = hdaPgAfter = hdaDev->configRead32(0x44);
+	hdaCgSaved = hdaCgAfter = hdaDev->configRead32(0x48);
+	// PCI config space remains writable in D3hot: clear PGCTL.ADSPPGD (b2),
+	// set PGCTL.LSRMD (b4), and restore Intel PCH CGCTL clock-gating bits.
+	const uint32_t wantPg = (hdaPgSaved & ~(1u << 2)) | (1u << 4);
+	const uint32_t wantCg = hdaCgSaved | hdaCgMask;
+	if (wantPg != hdaPgSaved) hdaDev->configWrite32(0x44, wantPg);
+	if (wantCg != hdaCgSaved) hdaDev->configWrite32(0x48, wantCg);
+	hdaPgAfter = hdaDev->configRead32(0x44);
+	hdaCgAfter = hdaDev->configRead32(0x48);
+	hdaTouched = (hdaPgAfter != hdaPgSaved || hdaCgAfter != hdaCgSaved);
+	hdaSleepValid = true;
+}
+
+void S0ixStandby::hdaWake()
+{
+	if (!hdaDev || !hdaPmCap) return;
+	if (hdaTouched) {
+		hdaDev->configWrite32(0x44, hdaPgSaved);
+		hdaDev->configWrite32(0x48, hdaCgSaved);
+		hdaTouched = false;
+	}
+	hdaPmWake = hdaDev->configRead16(hdaPmCap + 4);
+}
+
 
 // ---------------------------------------------------------------------------
 // Sleep / wake
@@ -1440,6 +1516,7 @@ void S0ixStandby::battTimerFired(OSObject *owner, IOTimerEventSource *sender)
 			self->findEcGpe();
 			if (self->ecGpe != 0xFFFFFFFF) self->publishEcWake();
 		}
+		if (self->hdaCgMask) self->setupHdaPM();
 		self->publishLog();
 		sender->setTimeoutMS(60000);
 	}
@@ -1467,6 +1544,7 @@ void S0ixStandby::onSleep()
 	}
 	// Drivers (and IOPCIFamily's D3 transition) are done by now.
 	wifiPmcsrSleep = wifiDev ? wifiDev->configRead16(wifiPmCap + 4) : 0xFFFF;
+	if (lastSleepType == kSleepTypeDeepIdle) hdaSleep();
 
 	entered = false;
 	if (dsmEnabled && lastSleepType == kSleepTypeDeepIdle &&
@@ -1518,6 +1596,7 @@ void S0ixStandby::onWake()
 		dsmExit();
 		entered = false;
 	}
+	hdaWake();
 	// Before any driver wakes: Apple's accelerator restarts the engines later.
 	if (gpuMMIO) {
 		dispCapture(dispAtWake, &dispAtSleep);
@@ -1551,6 +1630,10 @@ void S0ixStandby::onWake()
 	snap.gpuVerdict = gpuVerdict; snap.gpuResetResult = gpuResetResult;
 	snap.gpuResetUs = gpuResetUs; snap.gpuEnginesReady = gpuEnginesReady;
 	snap.wifiPmcsrSleep = wifiPmcsrSleep; snap.wifiPmcsrWake = wifiPmcsrWake;
+	snap.hdaValid = hdaSleepValid;
+	snap.hdaPmSleep = hdaPmSleep; snap.hdaPmWake = hdaPmWake;
+	snap.hdaPgSaved = hdaPgSaved; snap.hdaPgAfter = hdaPgAfter;
+	snap.hdaCgSaved = hdaCgSaved; snap.hdaCgAfter = hdaCgAfter;
 	snap.dispAtSleep = dispAtSleep; snap.dispAtWake = dispAtWake;
 	if (pmcHaltValid)
 		for (uint32_t i = 0; i < 1024; i++) pmcSnap[i] = pmcAtHalt[i];
@@ -1677,6 +1760,13 @@ void S0ixStandby::publish()
 	publishGPU();
 	publishDisplay();
 	publishLog();
+	if (hdaDev && snap.hdaValid) {
+		char h[180];
+		snprintf(h, sizeof(h), "00:1f.3 8086:%04x: PMCSR D%u(0x%04x)/D%u(0x%04x), PGCTL 0x%08x->0x%08x, CGCTL 0x%08x->0x%08x",
+		         hdaDid, snap.hdaPmSleep & 3, snap.hdaPmSleep, snap.hdaPmWake & 3, snap.hdaPmWake,
+		         snap.hdaPgSaved, snap.hdaPgAfter, snap.hdaCgSaved, snap.hdaCgAfter);
+		setProperty("HDA PCI power state", h);
+	}
 	if (wifiDev) {
 		char w[96];
 		snprintf(w, sizeof(w), "at sleep action D%u (0x%04x), at wake action D%u (0x%04x)",
