@@ -82,5 +82,16 @@ show a "CMOS checksum" message at the next boot. To pick a byte:
    BIOS complains or your settings changed, remove the boot-arg, load the BIOS
    defaults once, and try another byte.
 
+### Example: HP EliteBook 840 G8
+
+| Byte | Result |
+|---|---|
+| `0x60` (standard bank) | BIOS reported a CMOS checksum error and reset its settings: don't |
+| `0xF0` | write check ok, but cleared by the firmware at every boot |
+| **`0xC0`** | **works**: `previous boot reached 0xa8` after a reboot |
+
+So a byte that reads `0x00` and passes the write check can still be cleared
+at boot: always do one sleep/wake and one reboot before relying on it.
+
 Remove the boot-arg when you're done. The byte keeps its last value; that's
 harmless if the firmware doesn't use it.

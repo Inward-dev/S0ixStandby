@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.10 (unreleased)
+## 0.5.10 (2026-11-24)
 
 - New `s0ixtrace=0xNN` (diagnostic, opt-in): the kext writes a stage code to a
   battery-backed CMOS RAM byte at each sleep/wake step (sleep action, after the
@@ -15,7 +15,8 @@
   ignores or the firmware clears. The kext refuses a byte that holds anything
   but `0x00` or a stage code (`-s0ixtraceforce` overrides), lists the bytes
   reading `0x00` (`CMOS bytes reading 0x00`, read-only), and
-  `s0ixtraceset=0xVV` writes a value back once to restore a byte.
+  `s0ixtraceset=0xVV` writes a value back once to restore a byte. On the
+  HP 840 G8 byte 0xC0 works (0xF0 is cleared by the firmware at boot).
   docs/SLEEP-TRACE.md. Asked for in #9.
 
 ## 0.5.9 (2026-11-24)
