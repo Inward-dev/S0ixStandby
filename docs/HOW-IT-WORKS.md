@@ -119,7 +119,7 @@ the `S0ixStandby` service.
 | Battery full state | Read every minute from `IOPMPowerSource`. `stuck` = on AC, not charging, not FullyCharged, within 3 % of full: macOS then dark-wakes every few minutes ([BATTERY-FULL](BATTERY-FULL.md)) |
 | Last wake source | PM1 status (PWRBTN, RTC) and GPE0 status bits latched right after the halt, e.g. `PWRBTN` or `GPE 0x6e (EC)`. With `EC GPE at last halt` (whether macOS left the EC's GPE on) and `EC wakes` |
 | Wake GPEs armed during halt | GPE0 enable bits read right after the halt, before ACPI changes them: the GPEs that could actually wake the machine. AppleACPIPlatform arms them from the devices' `_PRW` after the quiesce actions (#7) |
-| Display DMC firmware / at sleep / at wake action | Which display microcontroller image is in program RAM: Apple's built-in (`0x0b004040`, SSP `0x6fc0`) or Intel's `tgl_dmc_ver2_12` (`0x0c004040`, SSP `0x86fc0`), raw values always shown. At the wake action the display well is usually still off, so 0 there is expected |
+| Display DMC firmware / at sleep / at wake action | Whether a display microcontroller image is in program RAM, with the raw values. On Tiger Lake only, it also names the image when program[0] and SSP base both match: Apple's built-in (`0x0b004040`, `0x6fc0`) or Intel's `tgl_dmc_ver2_12` (`0x0c004040`, `0x86fc0`). At the wake action the display well is usually still off, so 0 there is expected |
 | Recent log | The kext's last 40 log lines (seconds since boot), published after each wake, at start and every minute |
 | Since boot (script) | Sleeps, dark wakes and hours asleep since boot, from `pmset -g log` |
 

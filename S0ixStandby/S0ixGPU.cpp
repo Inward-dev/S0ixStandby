@@ -555,20 +555,20 @@ void S0ixStandby::refclkWake()
 	refclkCount++;
 }
 
-// Which DMC image is in program RAM. Values from TGL (issue #3, WhateverXe #157):
-// Apple's built-in _CSR_PATCH_AX starts with 0x0b004040 and uses SSP base
-// 0x6fc0; Intel's tgl_dmc_ver2_12 starts with 0x0c004040, SSP base 0x86fc0.
-static void dmcFormat(const uint32_t *reg, bool valid, char *out, size_t size)
+// Which DMC image is in program RAM. Known only for Tiger Lake (CPU model
+// 0x8C/0x8D; issue #3, WhateverXe #157): Apple's TGL framebuffer loads its
+// built-in image (program[0] 0x0b004040, SSP base 0x6fc0); Intel's
+// tgl_dmc_ver2_12 reads 0x0c004040 / 0x86fc0. program[0] is a header word that
+// other images share (an ADL-P image read 0x0b004040 too, #7), so elsewhere
+// only the raw values are shown.
+static void dmcFormat(const uint32_t *reg, bool valid, bool tgl, char *out, size_t size)
 {
 	if (!valid) { snprintf(out, size, "not read"); return; }
 	uint32_t p = reg[kDispProg], ssp = reg[kDispSsp];
-	const char *kind =
-	    p == 0 || p == 0xFFFFFFFF ? "not loaded or not readable" :
-	    p == 0x0b004040 ? "Apple built-in (TGL _CSR_PATCH_AX)" :
-	    p == 0x0c004040 ? "Intel image (TGL v2.12)" : "unknown image";
-	const char *sspKind = ssp == 0x00006fc0 ? " (Apple)" : ssp == 0x00086fc0 ? " (Intel)" : "";
-	snprintf(out, size, "%s: program 0x%08x, ssp base 0x%08x%s, htp 0x%08x",
-	         kind, p, ssp, sspKind, reg[kDispHtp]);
+	const char *kind = p == 0 || p == 0xFFFFFFFF ? "not loaded or not readable" : "loaded";
+	if (tgl && p == 0x0b004040 && ssp == 0x00006fc0) kind = "loaded, Apple's built-in TGL image";
+	else if (tgl && p == 0x0c004040 && ssp == 0x00086fc0) kind = "loaded, Intel tgl_dmc v2.12";
+	snprintf(out, size, "%s: program 0x%08x, ssp base 0x%08x, htp 0x%08x", kind, p, ssp, reg[kDispHtp]);
 }
 
 void S0ixStandby::publishDisplay()
@@ -578,7 +578,7 @@ void S0ixStandby::publishDisplay()
 	dispCapture(now, nullptr);
 	char buf[320];
 	if (now.valid) {
-		dmcFormat(now.reg, true, buf, sizeof(buf));
+		dmcFormat(now.reg, true, cpuModel == 0x8C || cpuModel == 0x8D, buf, sizeof(buf));
 		setProperty("Display DMC firmware", buf);
 	}
 	dispFormat(now, buf, sizeof(buf));
@@ -600,9 +600,9 @@ void S0ixStandby::publishDisplay()
 		setProperty("Display power at wake", buf);
 		// At the wake action the display well is usually still off, so the
 		// program RAM may read 0 there; "now" (after the driver) is what counts.
-		dmcFormat(snap.dispAtSleep.reg, snap.dispAtSleep.valid, buf, sizeof(buf));
+		dmcFormat(snap.dispAtSleep.reg, snap.dispAtSleep.valid, cpuModel == 0x8C || cpuModel == 0x8D, buf, sizeof(buf));
 		setProperty("Display DMC at sleep", buf);
-		dmcFormat(snap.dispAtWake.reg, snap.dispAtWake.valid, buf, sizeof(buf));
+		dmcFormat(snap.dispAtWake.reg, snap.dispAtWake.valid, cpuModel == 0x8C || cpuModel == 0x8D, buf, sizeof(buf));
 		setProperty("Display DMC at wake action", buf);
 		if (snap.dispAtSleep.valid && snap.dispAtWake.valid && snap.sleepCount != dispLoggedFor) {
 			dispLoggedFor = snap.sleepCount;

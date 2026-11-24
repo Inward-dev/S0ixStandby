@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.5.8 (unreleased)
+## 0.5.9 (unreleased)
+
+- Fixed: the DMC image label was wrong outside Tiger Lake (a ThinkPad E16
+  with NootedGreen's ADL-P image was labelled "Apple built-in (TGL …)", #7).
+  program[0] is a header word shared by several images. The image is now named
+  only on Tiger Lake (CPU model 0x8C/0x8D) and only when program[0] and the SSP
+  base both match; elsewhere `Display DMC firmware` shows "loaded" and the raw
+  values.
+- Docs: DPOF is not the only ADL/RPL PC2/PC3 blocker; on the ThinkPad E16
+  Gen 3 it was never written and the package stayed at PC3 (FINDINGS §13).
+- README: Kaby Lake R report (#6): Deep Idle with power-button, keyboard
+  and lid wake on a Yoga C930 with Apple graphics; drain high because the
+  package stays in PC3 during sleep.
+
+## 0.5.8 (2026-11-22)
 
 - Docs: FINDINGS §13 and a README row: on Alder/Raptor Lake the Intel `_DSM`
   fn 5 writes the Type-C IOM's DPOF bit, which holds the package at PC2/PC3

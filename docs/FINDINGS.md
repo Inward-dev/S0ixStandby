@@ -513,6 +513,22 @@ E16 Gen 3 (RPL-H).
 - **Tiger Lake is different:** the HP 840 G8's fn 5 also writes `DPOF = 1`
   (same reference code, ssdt14), and its halt reaches PC10 99 % anyway. So the
   latch looks specific to the ADL/RPL IOM.
+- **Not the only ADL/RPL blocker.** On the ThinkPad E16 Gen 3 (RPL-H 240H,
+  NootedGreen, two DRAM-less NVMe drives) DPOF was verifiably never written
+  (`s0ixfn=0x198`, or all functions with the DPOF rename; IOM register read
+  `0x0005d300`, DPOF clear) and the package still stayed at PC3 99 %. Ruled out
+  there as well: TCSS D3cold, the refclk workaround, wake-source arming, the
+  `_DSM` calls themselves, keeping the display core up, and the NVMe link
+  state (idle links gave PC2 73–79 %, a non-idle link PC3 99 %). At the halt
+  the PMC shows OPIO / main PLL / fast crystal not off with aggregate LTR "no
+  requirement". Linux s2idle on the same machine reaches PC10 93.7 % and SLP_S0.
+  Open; differences to the working X1 Yoga include the graphics kext
+  (NootedGreen vs WhateverXe with display power-off at sleep) and the CPU
+  spoof.
+- **DMC label caveat:** the E16 (ADL-P DMC loaded by NootedGreen) reads
+  program[0] `0x0b004040` with SSP base `0x86fc0`. program[0] is a header word
+  shared by several images, so from 0.5.9 the kext names the image only on
+  Tiger Lake and only when both program[0] and the SSP base match.
 
 ## Still to capture
 
