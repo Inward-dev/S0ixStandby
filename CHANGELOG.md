@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.12 (unreleased)
+## 0.5.12 (2026-11-24)
 
 - New `tools/pmtel.c` and `macos/pmc-sleep-diff.sh`: read IOReport counters
   (default `pmtelemetry_cpu` / `cstate_counter`) before and after one RTC-timed
