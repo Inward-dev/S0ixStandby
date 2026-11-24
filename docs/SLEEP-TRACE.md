@@ -34,13 +34,28 @@ A `Failure during sleep: GFX0()` hang should leave `0xA0`, `0xA7` or `0xA8`
 the end of the previous cycle). An "EFI/Bootrom Failure after
 last point of entry to sleep" hang should leave `0xA1` or later.
 
+## Safety checks
+
+- **The kext only writes an empty byte.** If the byte holds anything other
+  than `0x00` or one of the stage codes, it is probably firmware data, and the
+  kext refuses (`Sleep trace = refused: CMOS 0x.. holds 0x.., probably used by
+  the firmware`). `-s0ixtraceforce` overrides that; don't use it unless you
+  know the byte is free.
+- **`CMOS bytes reading 0x00`** lists the extended-bank bytes (`0x80`–`0xFF`)
+  that read `0x00` (read-only scan, done whenever `s0ixtrace` is set). Pick one
+  from it.
+- **Restoring a byte:** `s0ixtrace=0xNN s0ixtraceset=0xVV` writes `0xVV` to
+  byte `0xNN` once and leaves tracing off. Use it if a byte you tried held
+  something else (the old value is in `Sleep trace`), then remove both
+  boot-args.
+
 ## Checking that the byte works
 
 At start the kext writes `0xA0` and reads it straight back. `Sleep trace` ends
 in `write check ok`, or `write check FAILED (wrote 0xa0, read 0x..)`. A failed
-check means the chipset ignores writes to that byte; on Intel chipsets the
-extended bank (`0x80`–`0xFF`) can be disabled or locked by the firmware. Try a
-byte in the standard bank (`0x38`–`0x7F`) then.
+check means the chipset ignores writes there: on Intel chipsets the firmware
+can disable or lock the extended bank. Then the trace can't be used safely on
+that machine.
 
 If the check is ok but every boot still reports `no trace from the previous
 boot (byte was 0x00)`, the firmware clears that byte at power-on: try another
@@ -48,21 +63,22 @@ one. `Sleep trace now` shows the byte's value after the last wake.
 
 ## Choosing a CMOS byte
 
-The kext refuses bytes below `0x38` (RTC clock and status registers and the
-standard checksum area). Bytes `0x38`–`0x7F` are in the standard bank (ports
-0x70/0x71), `0x80`–`0xFF` in the extended bank (0x72/0x73).
+Only the **extended bank** (`0x80`–`0xFF`, ports 0x72/0x73) is accepted by
+default. The standard bank (`0x0E`–`0x7F`) is where firmware keeps its own
+checksummed settings: on an HP EliteBook 840 G8, writing byte `0x60` caused a
+"CMOS checksum" error at the next boot and the BIOS reset its settings to
+defaults. That happens whatever the byte held before, so "reads `0x00`" does
+not make a standard-bank byte safe. `-s0ixtraceforce` allows `0x38`–`0x7F` and
+in-use bytes; avoid it.
 
 Firmware uses CMOS RAM for its own settings, and some firmware checksums the
 bytes it uses. Writing a byte the firmware owns can reset BIOS settings or
 show a "CMOS checksum" message at the next boot. To pick a byte:
 
-1. Prefer the **extended bank** (`0x80`–`0xFF`), and stay away from ranges
+1. Start from `CMOS bytes reading 0x00`, and stay away from ranges
    your OpenCore `RTCMemoryFixup` excludes (`rtcfx_exclude=...`): those are
    bytes you already know macOS or the firmware write.
-2. If you can boot Linux, `sudo hexdump -C /dev/nvram` shows the standard
-   bank from `0x0E` on. A byte that reads `00` and stays `00` across reboots is
-   a good candidate there.
-3. After enabling it, do **one normal reboot** before any sleep test. If the
+2. After enabling it, do **one normal reboot** before any sleep test. If the
    BIOS complains or your settings changed, remove the boot-arg, load the BIOS
    defaults once, and try another byte.
 

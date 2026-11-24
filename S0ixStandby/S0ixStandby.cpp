@@ -1135,13 +1135,48 @@ void S0ixStandby::traceSetup()
 		setProperty("Sleep trace", "off (boot-arg s0ixtrace=0xNN, see docs/SLEEP-TRACE.md)");
 		return;
 	}
-	char buf[200];
-	if (idx < 0x38 || idx > 0xFF) {
-		snprintf(buf, sizeof(buf), "refused: CMOS byte 0x%x (allowed 0x38-0xFF)", idx);
+
+	// Read-only: which candidate bytes read 0x00, to choose one that's free.
+	{
+		char z[400]; size_t n = 0; z[0] = 0;
+		for (uint32_t i = 0x80; i <= 0xFF; ) {
+			if (cmosRamRead((uint8_t)i) != 0) { i++; continue; }
+			uint32_t j = i;
+			while (j + 1 <= 0xFF && cmosRamRead((uint8_t)(j + 1)) == 0) j++;
+			int r = (j > i) ? snprintf(z + n, sizeof(z) - n, "%s0x%02x-0x%02x", n ? " " : "", i, j)
+			                : snprintf(z + n, sizeof(z) - n, "%s0x%02x", n ? " " : "", i);
+			if (r > 0) n = (size_t)r < sizeof(z) - n ? n + (size_t)r : sizeof(z) - 1;
+			i = j + 1;
+		}
+		setProperty("CMOS bytes reading 0x00", n ? z : "none");
+	}
+
+	char buf[240];
+	// The standard bank is where firmware keeps its checksummed settings
+	// (an HP EliteBook 840 G8 reported a CMOS checksum error and reset its
+	// settings after byte 0x60 was written), so it needs -s0ixtraceforce.
+	bool force = bootArg("-s0ixtraceforce");
+	if (idx < 0x38 || idx > 0xFF || (idx < 0x80 && !force)) {
+		snprintf(buf, sizeof(buf), idx < 0x38 || idx > 0xFF
+		         ? "refused: CMOS byte 0x%x (allowed 0x80-0xFF)"
+		         : "refused: CMOS byte 0x%x is in the standard bank, which firmware checksums; use 0x80-0xFF", idx);
 		setProperty("Sleep trace", buf);
 		LOG("sleep trace %s", buf);
 		return;
 	}
+
+	// s0ixtraceset=0xVV: write one value (e.g. to restore what the byte held)
+	// and leave tracing off.
+	uint32_t setv = 0;
+	if (PE_parse_boot_argn("s0ixtraceset", &setv, sizeof(setv)) && setv <= 0xFF) {
+		cmosRamWrite((uint8_t)idx, (uint8_t)setv);
+		snprintf(buf, sizeof(buf), "off: wrote 0x%02x to CMOS 0x%02x (s0ixtraceset), read back 0x%02x",
+		         setv, idx, cmosRamRead((uint8_t)idx));
+		setProperty("Sleep trace", buf);
+		LOG("sleep trace %s", buf);
+		return;
+	}
+
 	static const char *const kStage[] = {
 		"booted, no sleep since", "sleep action started", "_DSM entry returned",
 		"sleep action finished", "last step before the Deep Idle halt",
@@ -1149,7 +1184,15 @@ void S0ixStandby::traceSetup()
 		"wake completed",
 	};
 	uint8_t prev = cmosRamRead((uint8_t)idx);
-	if (prev >= kTraceBoot && prev <= kTraceDone)
+	bool ours = prev >= kTraceBoot && prev <= kTraceDone;
+	if (!ours && prev != 0 && !force) {
+		snprintf(buf, sizeof(buf), "refused: CMOS 0x%02x holds 0x%02x, probably used by the firmware; "
+		         "pick a byte that reads 0x00 (see CMOS bytes reading 0x00)", idx, prev);
+		setProperty("Sleep trace", buf);
+		LOG("sleep trace %s", buf);
+		return;
+	}
+	if (ours)
 		snprintf(buf, sizeof(buf), "CMOS 0x%02x: previous boot reached 0x%02x (%s)",
 		         idx, prev, kStage[prev - kTraceBoot]);
 	else
@@ -1163,8 +1206,8 @@ void S0ixStandby::traceSetup()
 	if (back == kTraceBoot)
 		snprintf(buf + n, sizeof(buf) - n, "; write check ok");
 	else
-		snprintf(buf + n, sizeof(buf) - n, "; write check FAILED (wrote 0xa0, read 0x%02x): try another byte%s",
-		         back, (traceByte & 0x80) ? " or the standard bank (0x38-0x7f)" : "");
+		snprintf(buf + n, sizeof(buf) - n, "; write check FAILED (wrote 0xa0, read 0x%02x): "
+		         "the extended CMOS bank looks disabled or locked on this machine", back);
 	setProperty("Sleep trace", buf);
 	LOG("sleep trace %s", buf);
 }

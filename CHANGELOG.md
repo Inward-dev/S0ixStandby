@@ -7,10 +7,16 @@
   `_DSM` entry, last step before the Deep Idle halt, back from the halt, wake
   action, wake completed) and reports the previous boot's last stage at start
   (`Sleep trace`). Shows where a hang stopped even after a forced power-off.
-  The byte must be one the firmware doesn't use; bytes below 0x38 are refused.
+  Only extended-bank bytes (0x80-0xFF) are accepted by default: writing
+  standard-bank byte 0x60 on the HP 840 G8 caused a BIOS CMOS checksum error
+  and a reset to defaults.
   At start the byte is read back (`write check ok` / `FAILED`), and `Sleep
   trace now` shows its value after each wake, to catch bytes the chipset
-  ignores or the firmware clears. docs/SLEEP-TRACE.md. Asked for in #9.
+  ignores or the firmware clears. The kext refuses a byte that holds anything
+  but `0x00` or a stage code (`-s0ixtraceforce` overrides), lists the bytes
+  reading `0x00` (`CMOS bytes reading 0x00`, read-only), and
+  `s0ixtraceset=0xVV` writes a value back once to restore a byte.
+  docs/SLEEP-TRACE.md. Asked for in #9.
 
 ## 0.5.9 (2026-11-24)
 
