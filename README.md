@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.11.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.12.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -165,10 +165,10 @@ make DEBUG=1  # build/Debug/S0ixStandby.kext
 | [docs/HIBERNATION-FALLBACK.md](docs/HIBERNATION-FALLBACK.md) | Parallel track: hibernate-to-disk as a fallback |
 | [docs/UPSTREAM-WHATEVERXE.md](docs/UPSTREAM-WHATEVERXE.md) | Report for WhateverXe: why acceleration failed after Deep Idle |
 | [CHANGELOG.md](CHANGELOG.md) | Versions |
-| `macos/` | `s0ix-status.sh`, `wake-report.sh`, `lpm-status.sh`, `sleep-power-test.sh`, `check-deepidle.sh`, `pmc-dump.sh` |
+| `macos/` | `s0ix-status.sh`, `wake-report.sh`, `lpm-status.sh`, `sleep-power-test.sh`, `check-deepidle.sh`, `pmc-dump.sh`, `pmc-sleep-diff.sh` (PMC counters across one sleep) |
 | `linux/` | `s2idle-test.sh`, `capture-baseline.sh` (reference measurements under Linux) |
 | `S0ixStandby/` | Kext source |
-| `tools/` | `privacy-scan.sh` (CI), `redact.sh` (used by the capture scripts), `find-bst.py` (OpenCore `_BST` rename for SSDT-BATFULL) |
+| `tools/` | `privacy-scan.sh` (CI), `redact.sh` (used by the capture scripts), `find-bst.py` (OpenCore `_BST` rename for SSDT-BATFULL), `pmtel.c` (IOReport counter reader, used by `pmc-sleep-diff.sh`) |
 
 ## Related
 

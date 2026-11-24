@@ -89,10 +89,28 @@ jobs:
           name: S0ixStandby-${{ matrix.config }}
           path: build/*.zip
 
+  tools:
+    name: macOS tools
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build tools/pmtel.c
+        run: |
+          # Universal: Intel for the laptops, arm64 so the runner can run it.
+          clang -O2 -Wall -Wextra -Werror -arch x86_64 -arch arm64 \
+            -o pmtel tools/pmtel.c -framework CoreFoundation -lIOReport
+          file pmtel
+          ./pmtel diff /dev/null /dev/null
+          zip -q pmtel.zip pmtel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pmtel
+          path: pmtel.zip
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [checks, kext]
+    needs: [checks, kext, tools]
     runs-on: ubuntu-latest
     permissions:
       contents: write

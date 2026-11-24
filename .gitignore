@@ -20,3 +20,5 @@ DerivedData/
 MacKernelSDK/
 sleep-power-*.log
 wake-report-*.txt
+pmc-diff-*/
+tools/pmtel

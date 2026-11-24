@@ -130,20 +130,40 @@ the `_DSM` calls (0 = never, which would explain the 2 W).
 ## Finding what blocks PC10 (PMC telemetry diff)
 
 When Deep Idle works but the package stops at PC2/PC3, the PMC's own counters
-tell which side keeps it awake. Method by keenerdavid18 (#7): read the IOReport
-group `pmtelemetry_cpu` / `cstate_counter` before and after one sleep, with a
-small reader (his `pmtel.c` is attached to #7; build with
-`clang -O2 -o pmtel pmtel.c -framework CoreFoundation -lIOReport`).
+tell which side keeps it awake: read the IOReport group `pmtelemetry_cpu` /
+`cstate_counter` before and after one sleep. Method and the original reader by
+keenerdavid18 (#7); `tools/pmtel.c` is our implementation of it.
+
+One command does the whole run (builds `tools/pmtel` if needed, measures 10 s
+of awake idle, sleeps with an RTC wake, prints the deltas):
 
 ```
-./pmtel 0.25 pmtelemetry_cpu cstate_counter > before.txt
-sudo pmset relative wake 240; sudo pmset sleepnow    # hands off until it wakes
-./pmtel 0.25 pmtelemetry_cpu cstate_counter > after.txt
+sudo bash macos/pmc-sleep-diff.sh        # 240 s asleep; or give the seconds
 ```
 
-The counters are 16-bit: per counter, the delta is `(after - before) & 0xFFFF`.
-Also take a 10 s awake-idle sample, because the ~10–15 s awake around the
-sleep adds to every delta.
+Hands off until it wakes. Results go to `./pmc-diff-<date>/summary.txt`. The
+`pmtel` binary is also attached to each release (`pmtel.zip`, universal);
+put it in `tools/` to skip the build (which needs the Xcode command line tools).
+
+By hand:
+
+```
+clang -O2 -o tools/pmtel tools/pmtel.c -framework CoreFoundation -lIOReport
+tools/pmtel rate 10 pmtelemetry_cpu cstate_counter          # awake-idle rates
+tools/pmtel snap pmtelemetry_cpu cstate_counter > before.txt
+sudo pmset relative wake 240; sudo pmset sleepnow          # hands off until it wakes
+tools/pmtel snap pmtelemetry_cpu cstate_counter > after.txt
+tools/pmtel diff before.txt after.txt                       # (after - before) mod 2^16
+tools/pmtel list pmtelemetry_cpu                            # what the group has
+```
+
+The counters are 16-bit. `rate` samples every 0.25 s and handles the wrap; a
+`diff` across the sleep can't tell how often a counter wrapped, so a delta is
+only exact for counters below ~270/s during a 4 min halt (enough to see which
+ones climb). The ~10–20 s awake around the sleep adds to every delta: subtract
+the awake rate times those seconds. The group names come from Apple's PMC
+telemetry driver; if `pmtelemetry_cpu` isn't there, `tools/pmtel list` shows
+what is.
 
 What the counters have meant so far (FINDINGS §13, §13.1):
 

@@ -531,7 +531,7 @@ E16 Gen 3 (RPL-H).
 
 ### 13.1 E16: the blocker is on the PCH side (2026-11-24, #7)
 
-keenerdavid18 compared the PMC telemetry counters (IOReport group
+keenerdavid18 compared the PMC telemetry counters (now `macos/pmc-sleep-diff.sh`) (IOReport group
 `pmtelemetry_cpu`, subgroup `cstate_counter`, 16-bit counters) before and after
 one ~4 min Deep Idle halt on the E16, and brandonedley ran the same diff on the
 X1 Yoga Gen 7 across a PC10 99 % halt.

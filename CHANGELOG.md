@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.5.11 (unreleased)
+## 0.5.12 (unreleased)
+
+- New `tools/pmtel.c` and `macos/pmc-sleep-diff.sh`: read IOReport counters
+  (default `pmtelemetry_cpu` / `cstate_counter`) before and after one RTC-timed
+  sleep and print the 16-bit deltas next to the awake-idle rates, to see what
+  keeps the package out of PC10. Our implementation of keenerdavid18's method
+  and reader (#7). Read-only. CI builds it (universal) and attaches `pmtel.zip`
+  to releases.
+- `.gitignore`: `pmc-diff-*/`, `tools/pmtel`.
+
+## 0.5.11 (2026-11-24)
 
 - Docs: PMC telemetry diff (`pmtelemetry_cpu` / `cstate_counter`, method and
   reader by keenerdavid18, #7) as a way to find what keeps the package at
