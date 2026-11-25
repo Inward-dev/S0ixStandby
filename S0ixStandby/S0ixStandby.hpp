@@ -148,6 +148,18 @@ private:
 	void dsmExit();
 
 	bool setupMeter();
+
+	// HPET standing comparator-match fix: AppleHPET disables HPET (GEN_CONF b0=0),
+	// zeroes MAIN_CNT, and leaves T0..T3 comparators at 0. That standing match
+	// holds PWRM+0x1C6C bit 19 low and stalls PCH entry to S0i2.0 / SLP_S0.
+	IOMemoryMap *hpetMap {nullptr};
+	volatile uint32_t *hpetReg {nullptr};
+	uint64_t hpetAddr {0};
+	bool hpetFixEnabled {true};
+	uint32_t hpetFixCount {0};
+	uint32_t hpetFixMask {0};
+	void setupHpetFix();
+	uint32_t hpetClearMatches(uint32_t *outMask = nullptr);
 	bool readCounter(uint64_t &value);
 
 	// Everything publish() needs, copied at wake. A dark wake may go back to
