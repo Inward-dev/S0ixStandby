@@ -271,6 +271,27 @@ private:
 	uint32_t solCfg[16] {};
 	bool solTouched {false}, solSleepValid {false}, solRestored {false};
 	void setupSolPM();
+	// -s0ixlanpm: every PCI Ethernet function released for the Deep Idle
+	// halt (D3hot if left in D0, bus mastering off, Intel DRV_LOAD), #14.
+	static constexpr uint32_t kMaxLan = 4;
+	struct LanDev {
+		IOPCIDevice *dev;
+		IOMemoryMap *map;
+		volatile uint32_t *reg;     // Intel BAR0 (CTRL_EXT), else null
+		UInt8 pmCap, bus, slot, fn;
+		uint16_t vid, did, pmSleep, pmHalt, cmdSleep;
+		uint32_t ctrlExt;
+		uint32_t cfg[16];
+		bool d3Set, d3Done, bmeCleared, drvCleared, drvRestore, restored;
+		const char *note;
+	};
+	LanDev lan[kMaxLan] {};
+	uint32_t lanCount {0};
+	bool lanPM {false}, lanSearched {false}, lanSleepValid {false};
+	void setupLanPM();
+	void lanSleep();
+	void lanWake();
+	void lanLate();
 	void solSleep();
 	void solWake();
 	void hdaSleep();

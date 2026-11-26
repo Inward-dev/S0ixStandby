@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.15.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.16.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -95,6 +95,7 @@ XCPM stops at core C6 in Deep Idle; with Ice Lake it reaches C10
 | `-s0ixgpureset` | reset the iGPU at Deep Idle wake on Gen11/12 CPUs other than Tiger Lake too (off there by default, untested) |
 | `-s0ixwifipm` | experimental: Wi-Fi PCI function to D3 for sleep through IOPCIFamily (CNVi blocker work) |
 | `-s0ixpwrbtnwake` | experimental: if the power button doesn't wake from Deep Idle and `PM1_EN during halt` shows `PWRBTN_EN OFF` with `Power button = fixed feature`, set PWRBTN_EN for the halt (restored right after it) |
+| `-s0ixlanpm` | experimental: every wired Ethernet function (PCI class 0x0200, any vendor, onboard or behind a root port) is released for the Deep Idle halt as Linux does at suspend: put into D3hot if its driver left it in D0 (back to D0 at wake), bus mastering off, and on Intel NICs (e1000e/igb/igc family) `CTRL_EXT.DRV_LOAD` cleared; all restored at or after the wake. IntelMausi only sets D3, which can keep `GBE` powered and the package at PC8 ([#14](https://github.com/labrouss/S0ixStandby/issues/14)). `LAN PCI PM` lists the NICs found, `LAN PCI power state` what was done. No PHY power-down yet |
 | `-s0ixnosold3` | don't touch the AMT Serial-over-LAN function. By default (0.5.15) S0ixStandby puts the Intel serial function at 00:16.3 (vPro machines) into D3hot for the Deep Idle halt and back to D0 at wake: macOS's Apple16X50Serial keeps it in D0, which keeps CSME from power gating, so SLP_S0 stays 0 ([#13](https://github.com/labrouss/S0ixStandby/issues/13), Ivanfangsc). `SOL PCI power state` shows the result. Machines without that function are unaffected |
 | `-s0ixnohpetfix` | don't touch the HPET. By default (0.5.15) S0ixStandby clears HPET comparators that equal the stopped HPET counter: AppleHPET leaves them all at 0, and that standing match keeps the PMC from entering S0i2.0, so **SLP_S0 stays 0 at PC10 99 %** ([#11](https://github.com/labrouss/S0ixStandby/pull/11), brandonedley; FINDINGS §14). With this boot-arg the HPET is only read: `HPET comparator fix` shows whether the match is there |
 | `-s0ixhdapm` | experimental: during Deep Idle, set the Intel HDA (00:1f.3) clock-gating bits in PCI `CGCTL` (0x48), which AppleHDAController leaves at 0, and restore them at wake. Saved ~0.4–0.6 W of sleep power on the X1 Yoga Gen 7 with audio working ([#10](https://github.com/labrouss/S0ixStandby/pull/10), brandonedley). `s0ixhdacg=0xNNNNNNNN` sets the mask (default `0x003F01FF`); `s0ixhdapg=0xNN` sets PGCTL for the halt (e.g. `0` for HDA power gating, S0i3.0 tests) |

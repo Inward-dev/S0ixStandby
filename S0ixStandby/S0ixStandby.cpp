@@ -36,6 +36,9 @@
 //              -s0ixpwrbtnwake  experimental: set PM1_EN.PWRBTN_EN for the Deep
 //                          Idle halt if macOS left it off (fixed-feature power
 //                          button), restored right after the halt
+//              -s0ixlanpm  every PCI Ethernet function for the Deep Idle halt:
+//                          D3hot if left in D0, bus mastering off, Intel
+//                          CTRL_EXT.DRV_LOAD cleared; restored at wake (#14)
 //              (default)   AMT Serial-over-LAN (00:16.3) to D3hot for the Deep
 //                          Idle halt, back to D0 at wake (#13); -s0ixnosold3 off
 //              (default)   clear HPET comparators that equal the stopped main
@@ -345,6 +348,7 @@ bool S0ixStandby::start(IOService *provider)
 	wifiPM = bootArg("-s0ixwifipm");
 	hdaCgMask = bootArg("-s0ixhdapm") ? 0x003F01FFu : 0u;
 	solPM = !bootArg("-s0ixnosold3");   // on by default since 0.5.15
+	lanPM = bootArg("-s0ixlanpm");
 	if (!solPM) setProperty("SOL PCI PM", "off (-s0ixnosold3)");
 	{ uint32_t m = 0; if (PE_parse_boot_argn("s0ixhdacg", &m, sizeof(m))) hdaCgMask = m; }
 	// s0ixhdapg=0xNN: PGCTL value for the halt instead of ADSPPGD=0/LSRMD=1
@@ -552,6 +556,7 @@ void S0ixStandby::free()
 	OSSafeReleaseNULL(wifiDev);
 	OSSafeReleaseNULL(hdaDev);
 	OSSafeReleaseNULL(solDev);
+	for (uint32_t k = 0; k < lanCount; k++) { OSSafeReleaseNULL(lan[k].map); OSSafeReleaseNULL(lan[k].dev); }
 	OSSafeReleaseNULL(acTimer);
 	OSSafeReleaseNULL(battTimer);
 	OSSafeReleaseNULL(workLoop);
@@ -1142,6 +1147,165 @@ void S0ixStandby::setupSolPM()
 	else
 		snprintf(buf, sizeof(buf), "no Intel serial (AMT SOL) function at 00:16.3");
 	setProperty("SOL PCI PM", buf);
+}
+
+// ---------------------------------------------------------------------------
+// -s0ixlanpm: wired Ethernet functions released for the Deep Idle halt
+// ---------------------------------------------------------------------------
+// Request and measurements: ethermcman (#14, Dell Latitude 5420, TGL-U): the
+// enabled I219-LM kept the package at PC8 under IntelMausi (it only sets
+// D3); Linux e1000e reaches PC10 with it enabled. For every PCI Ethernet
+// function (class 0x0200), like Linux at suspend:
+//   - a function its driver left in D0 goes to D3hot (header saved; back to
+//     D0 and restored at wake, as for the AMT SOL function),
+//   - bus mastering off for the halt, back on at the wake action,
+//   - Intel NICs (e1000e/igb/igc family, CTRL_EXT 0x18 bit 28 DRV_LOAD):
+//     DRV_LOAD cleared, i.e. the driver hands the NIC back to the firmware /
+//     ME power management; set again after the wake once the driver has the
+//     NIC in D0. Done only with No_Soft_Reset = 1, because CTRL_EXT is MMIO
+//     and needs a short D3hot -> D0 -> D3hot.
+
+static const uint32_t kLanCtrlExt = 0x18;
+static const uint32_t kLanDrvLoad = 1u << 28;
+
+void S0ixStandby::setupLanPM()
+{
+	if (lanSearched) return;
+	lanSearched = true;
+	OSDictionary *match = serviceMatching("IOPCIDevice");
+	OSIterator *it = match ? getMatchingServices(match) : nullptr;
+	OSSafeReleaseNULL(match);
+	if (!it) return;
+	while (OSObject *o = it->getNextObject()) {
+		if (lanCount >= kMaxLan) break;
+		IOPCIDevice *dev = OSDynamicCast(IOPCIDevice, o);
+		if (!dev) continue;
+		uint32_t id = dev->configRead32(kIOPCIConfigVendorID);
+		uint32_t cls = dev->configRead32(kIOPCIConfigClassCode) >> 16;
+		if (id == 0xFFFFFFFF || cls != 0x0200) continue;               // Ethernet controller
+		UInt8 pm = 0;
+		if (!dev->findPCICapability(kIOPCIPowerManagementCapability, &pm) || !pm) continue;
+		LanDev &l = lan[lanCount++];
+		dev->retain();
+		l.dev = dev;
+		l.pmCap = pm;
+		l.vid = (uint16_t)id;
+		l.did = (uint16_t)(id >> 16);
+		l.bus = dev->getBusNumber(); l.slot = dev->getDeviceNumber(); l.fn = dev->getFunctionNumber();
+		// Intel: map BAR0 (memory) for CTRL_EXT; read once to check it makes sense.
+		if (l.vid == 0x8086 && !(dev->configRead32(kIOPCIConfigBaseAddress0) & 1)) {
+			l.map = dev->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0, kIOMapInhibitCache);
+			if (l.map && l.map->getLength() > kLanCtrlExt)
+				l.reg = reinterpret_cast<volatile uint32_t *>(l.map->getVirtualAddress());
+			if (l.reg && (dev->configRead16(pm + 4) & 3) == 0 && l.reg[kLanCtrlExt / 4] == 0xFFFFFFFF)
+				l.reg = nullptr;
+		}
+	}
+	it->release();
+	char buf[400]; size_t n = 0; buf[0] = 0;
+	for (uint32_t k = 0; k < lanCount && n + 1 < sizeof(buf); k++) {
+		LanDev &l = lan[k];
+		uint16_t pmcsr = l.dev->configRead16(l.pmCap + 4);
+		snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n, "%s%02x:%02x.%x %04x:%04x D%u, No_Soft_Reset %s%s",
+		      k ? "; " : "", l.bus, l.slot, l.fn, l.vid, l.did, pmcsr & 3, (pmcsr & 8) ? "yes" : "no",
+		      l.reg ? ", DRV_LOAD (Intel)" : ""));
+	}
+	setProperty("LAN PCI PM", lanCount ? buf : "no PCI Ethernet function found");
+}
+
+void S0ixStandby::lanSleep()
+{
+	lanSleepValid = false;
+	if (!lanPM || !lanCount) return;
+	lanSleepValid = true;
+	for (uint32_t k = 0; k < lanCount; k++) {
+		LanDev &l = lan[k];
+		l.d3Set = l.d3Done = l.bmeCleared = l.drvCleared = l.restored = false;
+		l.note = "";
+		l.pmSleep = l.dev->configRead16(l.pmCap + 4);
+		if (l.pmSleep == 0xFFFF) { l.note = "not readable"; continue; }
+		l.cmdSleep = l.dev->configRead16(kIOPCIConfigCommand);
+		bool d0 = (l.pmSleep & 3) == 0;
+		bool nsr = (l.pmSleep & 8) != 0;
+		// Intel DRV_LOAD: MMIO, so the function must be in D0 for the write.
+		if (l.reg) {
+			if (!d0 && !nsr) {
+				l.note = "DRV_LOAD left (no No_Soft_Reset)";
+			} else {
+				if (!d0) { l.dev->configWrite16(l.pmCap + 4, (uint16_t)(l.pmSleep & ~0x8003u)); IODelay(10000); }
+				l.ctrlExt = l.reg[kLanCtrlExt / 4];
+				if (l.ctrlExt != 0xFFFFFFFF && (l.ctrlExt & kLanDrvLoad)) {
+					l.reg[kLanCtrlExt / 4] = l.ctrlExt & ~kLanDrvLoad;
+					l.drvCleared = true;
+				}
+				if (!d0) l.dev->configWrite16(l.pmCap + 4, (uint16_t)((l.pmSleep & ~0x8003u) | 3u));
+			}
+		}
+		// Left in D0 by its driver: to D3hot, header kept for the wake.
+		if (d0) {
+			for (uint32_t i = 0; i < 16; i++) l.cfg[i] = l.dev->configRead32((UInt8)(i * 4));
+			l.dev->configWrite16(l.pmCap + 4, (uint16_t)((l.pmSleep & ~0x8003u) | 3u));
+			l.d3Set = l.d3Done = true;
+		}
+		if (l.cmdSleep & kIOPCICommandBusMaster) {
+			l.dev->configWrite16(kIOPCIConfigCommand, (uint16_t)(l.cmdSleep & ~kIOPCICommandBusMaster));
+			l.bmeCleared = true;
+		}
+		l.pmHalt = l.dev->configRead16(l.pmCap + 4);
+	}
+}
+
+void S0ixStandby::lanWake()
+{
+	if (!lanSleepValid) return;
+	for (uint32_t k = 0; k < lanCount; k++) {
+		LanDev &l = lan[k];
+		if (l.d3Set) {
+			l.dev->configWrite16(l.pmCap + 4, (uint16_t)(l.dev->configRead16(l.pmCap + 4) & ~0x8003u));
+			IODelay(10000);
+			bool reset = false;
+			for (uint32_t i = 4; i <= 9; i++)
+				if (l.dev->configRead32((UInt8)(i * 4)) != l.cfg[i]) reset = true;
+			if (reset) {
+				for (uint32_t i = 4; i <= 9; i++) l.dev->configWrite32((UInt8)(i * 4), l.cfg[i]);
+				l.dev->configWrite32(0x3C, l.cfg[15]);
+				l.restored = true;
+			}
+			// Command (bus master included) exactly as the driver had it.
+			l.dev->configWrite16(kIOPCIConfigCommand, l.cmdSleep);
+			l.d3Set = false;
+		} else if (l.bmeCleared) {
+			l.dev->configWrite16(kIOPCIConfigCommand,
+			                     (uint16_t)(l.dev->configRead16(kIOPCIConfigCommand) | kIOPCICommandBusMaster));
+		}
+		l.drvRestore = l.drvCleared;
+	}
+}
+
+// After the wake (publish timer): drivers have their NICs in D0 again.
+void S0ixStandby::lanLate()
+{
+	if (!lanPM || !lanCount || !lanSleepValid) return;
+	char buf[480]; size_t n = 0; buf[0] = 0;
+	for (uint32_t k = 0; k < lanCount && n + 1 < sizeof(buf); k++) {
+		LanDev &l = lan[k];
+		const char *drv = "";
+		if (l.drvRestore && l.reg) {
+			uint16_t pm = l.dev->configRead16(l.pmCap + 4);
+			uint32_t v = (pm & 3) == 0 ? l.reg[kLanCtrlExt / 4] : 0xFFFFFFFF;
+			if (v == 0xFFFFFFFF) drv = ", DRV_LOAD NOT restored (not in D0)";
+			else if (v & kLanDrvLoad) { drv = ", DRV_LOAD set again by the driver"; l.drvRestore = false; }
+			else { l.reg[kLanCtrlExt / 4] = v | kLanDrvLoad; drv = ", DRV_LOAD restored"; l.drvRestore = false; }
+		}
+		snAdd(n, sizeof(buf), snprintf(buf + n, sizeof(buf) - n,
+		      "%s%02x:%02x.%x: D%u at the sleep action, D%u during the halt%s%s%s%s%s%s%s",
+		      k ? "; " : "", l.bus, l.slot, l.fn, l.pmSleep & 3, l.pmHalt & 3,
+		      l.d3Done ? " (D3hot set by S0ixStandby)" : "", l.bmeCleared ? ", bus master off" : "",
+		      l.drvCleared ? ", DRV_LOAD cleared" : "", drv,
+		      l.restored ? ", header restored after D0" : "",
+		      l.note && l.note[0] ? ", " : "", l.note ? l.note : ""));
+	}
+	setProperty("LAN PCI power state", buf);
 }
 
 void S0ixStandby::solSleep()
@@ -1772,6 +1936,7 @@ void S0ixStandby::battTimerFired(OSObject *owner, IOTimerEventSource *sender)
 		}
 		if (self->hdaCgMask) self->setupHdaPM();
 		if (self->solPM) self->setupSolPM();
+		if (self->lanPM) self->setupLanPM();
 		self->publishLog();
 		sender->setTimeoutMS(60000);
 	}
@@ -1801,6 +1966,7 @@ void S0ixStandby::onSleep()
 	wifiPmcsrSleep = wifiDev ? wifiDev->configRead16(wifiPmCap + 4) : 0xFFFF;
 	if (lastSleepType == kSleepTypeDeepIdle) hdaSleep();
 	if (lastSleepType == kSleepTypeDeepIdle) solSleep();
+	if (lastSleepType == kSleepTypeDeepIdle) lanSleep(); else lanSleepValid = false;
 
 	if (lastSleepType == kSleepTypeDeepIdle && hpetFixEnabled && hpetReg) hpetClearMatches(nullptr, true);
 	entered = false;
@@ -1856,6 +2022,7 @@ void S0ixStandby::onWake()
 	}
 	hdaWake();
 	solWake();
+	lanWake();
 	// Before any driver wakes: Apple's accelerator restarts the engines later.
 	if (gpuMMIO) {
 		dispCapture(dispAtWake, &dispAtSleep);
@@ -2022,6 +2189,7 @@ void S0ixStandby::publish()
 	publishDisplay();
 	publishLog();
 	if (hpetReg) { uint32_t m = 0; hpetClearMatches(&m, false); publishHpet(m); }
+	lanLate();
 	if (solDev && snap.solValid) {
 		char t[200];
 		snprintf(t, sizeof(t), "00:16.3 8086:%04x: D%u (0x%04x) before sleep, D%u (0x%04x) during the halt, D%u (0x%04x) after wake%s",

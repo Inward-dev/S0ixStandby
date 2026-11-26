@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.5.15 (unreleased)
+## 0.5.16 (unreleased)
+
+- New `-s0ixlanpm` (experimental, opt-in): every wired Ethernet function
+  (PCI class 0x0200, any vendor) is released for the Deep Idle halt as
+  Linux does at suspend: D3hot if its driver left it in D0 (header saved,
+  restored at wake), bus mastering off, and on Intel NICs (e1000e/igb/igc
+  family) `CTRL_EXT.DRV_LOAD` cleared (only with No_Soft_Reset, since that
+  needs a short D3hot -> D0 -> D3hot); all restored at or after the wake.
+  IntelMausi only sets D3, and on a Latitude 5420 the enabled I219 kept the
+  package at PC8 (#14, ethermcman). `LAN PCI PM`, `LAN PCI power state`.
+  No PHY power-down yet.
+
+## 0.5.15 (2026-11-26)
 
 - The HPET comparator fix and the AMT SOL D3hot are now **on by default**:
   with both, real SLP_S0 is reached on Tiger Lake-U (HP EliteBook 840 G8,
