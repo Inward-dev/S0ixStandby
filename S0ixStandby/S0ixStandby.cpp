@@ -36,11 +36,11 @@
 //              -s0ixpwrbtnwake  experimental: set PM1_EN.PWRBTN_EN for the Deep
 //                          Idle halt if macOS left it off (fixed-feature power
 //                          button), restored right after the halt
-//              -s0ixsold3  AMT Serial-over-LAN (00:16.3) to D3hot for the
-//                          Deep Idle halt, back to D0 at wake (#13)
-//              -s0ixhpetfix  clear HPET comparators that equal the stopped main
+//              (default)   AMT Serial-over-LAN (00:16.3) to D3hot for the Deep
+//                          Idle halt, back to D0 at wake (#13); -s0ixnosold3 off
+//              (default)   clear HPET comparators that equal the stopped main
 //                          counter (AppleHPET leaves them at 0), which keeps the
-//                          PMC from entering S0i2.0 / SLP_S0 (#11)
+//                          PMC from entering S0i2.0 / SLP_S0 (#11); -s0ixnohpetfix off
 //              -s0ixgpuprobe  also probe an idle GPU (canary) and keep the last
 //                          result in NVRAM (s0ix-gpu-last); for debugging
 //              s0ixfn=N    bitmask of _DSM functions allowed to run, e.g.
@@ -344,7 +344,8 @@ bool S0ixStandby::start(IOService *provider)
 	gpuResetForced = bootArg("-s0ixgpureset");
 	wifiPM = bootArg("-s0ixwifipm");
 	hdaCgMask = bootArg("-s0ixhdapm") ? 0x003F01FFu : 0u;
-	solPM = bootArg("-s0ixsold3");
+	solPM = !bootArg("-s0ixnosold3");   // on by default since 0.5.15
+	if (!solPM) setProperty("SOL PCI PM", "off (-s0ixnosold3)");
 	{ uint32_t m = 0; if (PE_parse_boot_argn("s0ixhdacg", &m, sizeof(m))) hdaCgMask = m; }
 	refclkWA = bootArg("-s0ixrefclk");
 	acNoRtc = bootArg("-s0ixacnortc");
@@ -1105,7 +1106,10 @@ void S0ixStandby::hdaWake()
 
 void S0ixStandby::setupSolPM()
 {
-	if (solDev) return;
+	// One search (PCI is enumerated by the first timer run); most machines
+	// have no 00:16.3 serial function at all.
+	if (solDev || solSearched) return;
+	solSearched = true;
 	OSDictionary *match = serviceMatching("IOPCIDevice");
 	OSIterator *it = match ? getMatchingServices(match) : nullptr;
 	OSSafeReleaseNULL(match);
@@ -1130,7 +1134,7 @@ void S0ixStandby::setupSolPM()
 	it->release();
 	char buf[128];
 	if (solDev)
-		snprintf(buf, sizeof(buf), "00:16.3 8086:%04x: on (-s0ixsold3), now D%u (PMCSR 0x%04x)",
+		snprintf(buf, sizeof(buf), "00:16.3 8086:%04x: on (off with -s0ixnosold3), now D%u (PMCSR 0x%04x)",
 		         solDid, solDev->configRead16(solPmCap + 4) & 3, solDev->configRead16(solPmCap + 4));
 	else
 		snprintf(buf, sizeof(buf), "no Intel serial (AMT SOL) function at 00:16.3");
@@ -1328,10 +1332,10 @@ uint32_t S0ixStandby::hpetClearMatches(uint32_t *outMask, bool write)
 
 void S0ixStandby::setupHpetFix()
 {
-	// Opt-in while it is confirmed on more platforms (verified on ADL-P,
-	// brandonedley, #11). Without the boot-arg the HPET is only read, so
-	// s0ix-status.sh shows whether the standing match is there.
-	hpetFixEnabled = bootArg("-s0ixhpetfix") && !bootArg("-s0ixnohpetfix");
+	// On by default since 0.5.15 (SLP_S0 confirmed on TGL-U, ADL-P, RPL-U).
+	// With -s0ixnohpetfix the HPET is only read, so s0ix-status.sh still
+	// shows whether the standing match is there.
+	hpetFixEnabled = !bootArg("-s0ixnohpetfix");
 	uint64_t addr = 0;
 	const OSData *tbl = nullptr;
 	if (IOACPIPlatformExpert *acpi = OSDynamicCast(IOACPIPlatformExpert, getPlatform()))
@@ -1376,13 +1380,13 @@ void S0ixStandby::publishHpet(uint32_t mask)
 	uint32_t conf = hpetReg[0x10 / 4], cnt = hpetReg[0xF0 / 4];
 	char buf[240];
 	if (hpetFixEnabled)
-		snprintf(buf, sizeof(buf), "on (-s0ixhpetfix): HPET 0x%llx CONF 0x%x CNT 0x%x; cleared %u comparator(s) so far (timers 0x%x)",
+		snprintf(buf, sizeof(buf), "on: HPET 0x%llx CONF 0x%x CNT 0x%x; cleared %u comparator(s) so far (timers 0x%x)",
 		         (unsigned long long)hpetAddr, conf, cnt, hpetFixCount, hpetFixMask);
 	else if (conf & 1u)
 		snprintf(buf, sizeof(buf), "off: HPET 0x%llx running (CONF 0x%x), no standing match", (unsigned long long)hpetAddr, conf);
 	else if (mask)
 		snprintf(buf, sizeof(buf), "off: HPET 0x%llx stopped (CONF 0x%x, CNT 0x%x) with comparator == counter on timers 0x%x; "
-		         "this can keep SLP_S0 at 0 (see -s0ixhpetfix)", (unsigned long long)hpetAddr, conf, cnt, mask);
+		         "this can keep SLP_S0 at 0 (fix off by -s0ixnohpetfix)", (unsigned long long)hpetAddr, conf, cnt, mask);
 	else
 		snprintf(buf, sizeof(buf), "off: HPET 0x%llx stopped (CONF 0x%x, CNT 0x%x), no standing match", (unsigned long long)hpetAddr, conf, cnt);
 	setProperty("HPET comparator fix", buf);

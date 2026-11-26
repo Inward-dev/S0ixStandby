@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.5.14 (unreleased)
+## 0.5.15 (unreleased)
+
+- The HPET comparator fix and the AMT SOL D3hot are now **on by default**:
+  with both, real SLP_S0 is reached on Tiger Lake-U (HP EliteBook 840 G8,
+  99.7 % of a 240 s halt, the first time on this machine), Alder Lake-P and
+  Raptor Lake-U. `-s0ixnohpetfix` and `-s0ixnosold3` turn them off
+  (`-s0ixhpetfix` / `-s0ixsold3` are no longer needed). The SOL search runs
+  once; machines without an Intel serial function at 00:16.3 are unaffected.
+- README: SLP_S0 moved from the limitations to what works.
+
+## 0.5.14 (2026-11-26)
 
 - New `-s0ixsold3` (experimental, opt-in): the Intel AMT Serial-over-LAN
   function (00:16.3) goes to D3hot for the Deep Idle halt and back to D0 at

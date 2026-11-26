@@ -256,9 +256,10 @@ kexts), so the test is Wi-Fi D3 alone, then with Bluetooth off.
 
 ## 11. The iGPU display handshake is what unlocks SLP_S0 (2026-11-06)
 
-> Update 2026-11-25: the remaining blocker is most likely the stopped HPET's
-> standing comparator match (§14); the PMC diffs listed below as remaining
-> are normal sleep-time values.
+> Update 2026-11-26: solved. The remaining blockers were the stopped HPET's
+> standing comparator match and the AMT SOL function left in D0 (§14); with
+> both fixed this HP reaches SLP_S0 99.7 %. The PMC diffs listed below as
+> remaining are normal sleep-time values.
 
 Full 32-bit Linux and macOS PMC page dumps (`PWRM+0x1000`) differ in one
 block of settings that never changes on Linux: `PWRM+0x1CAC` = 0x9 (same mask
@@ -608,6 +609,14 @@ probably the same cause as the HP 840 G8's missing SLP_S0 (§11).
   `-s0ixhdapm` sets HDA `CGCTL`/`PGCTL` for the halt and restores them at wake.
   Both are opt-in until confirmed on more platforms. Without the boot-arg,
   `HPET comparator fix` reports whether the standing match exists.
+- **HP EliteBook 840 G8 (Tiger Lake-U, vPro), 2026-11-26:** the same
+  standing match (timers 0xf, `CONF 0x2`, `CNT 0`) and the same AMT SOL
+  function (00:16.3, 8086:a0e3, D0 under Apple16X50Serial). With the HPET fix
+  alone SLP_S0 stayed 0; with the HPET fix and SOL in D3hot for the halt:
+  **SLP_S0 99.7 % of a 240 s halt on battery** (PC10 99 %), the first real
+  S0ix on this machine under macOS. The serial port came back after the wake.
+- From 0.5.15 both are on by default (`-s0ixnohpetfix`, `-s0ixnosold3` turn
+  them off); `-s0ixhdapm` stays opt-in.
 
 ## Still to capture
 

@@ -262,7 +262,7 @@ private:
 	// to D3hot for the Deep Idle halt and back to D0 at wake. macOS's
 	// Apple16X50Serial keeps it in D0, which keeps CSME from power gating and
 	// SLP_S0 at 0 on vPro machines (#13).
-	bool solPM {false};
+	bool solPM {false}, solSearched {false};
 	IOPCIDevice *solDev {nullptr};
 	UInt8 solPmCap {0};
 	uint16_t solDid {0}, solPmBefore {0xFFFF}, solPmHalt {0xFFFF}, solPmWake {0xFFFF};
