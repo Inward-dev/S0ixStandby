@@ -118,6 +118,8 @@ the `S0ixStandby` service.
 | GPU state after sleep / GPU reset | Whether the iGPU kept its state, and whether (and how fast) it was reset |
 | Battery full state | Read every minute from `IOPMPowerSource`. `stuck` = on AC, not charging, not FullyCharged, within 3 % of full: macOS then dark-wakes every few minutes ([BATTERY-FULL](BATTERY-FULL.md)) |
 | Last wake source | PM1 status (PWRBTN, RTC) and GPE0 status bits latched right after the halt, e.g. `PWRBTN` or `GPE 0x6e (EC)`. With `EC GPE at last halt` (whether macOS left the EC's GPE on) and `EC wakes` |
+| PM1_EN during halt | PM1_EN at the quiesce action (after macOS armed its wake events) and right after the halt: whether PWRBTN_EN and RTC_EN were on. A `PWRBTN` in `Last wake source` with `PWRBTN_EN OFF` means the press was latched but couldn't wake the CPU |
+| Power button | FADT model: fixed feature (wakes through PM1 PWRBTN_EN) or control method (a PNP0C0C device whose `_PRW` GPE must be armed), plus the FADT flags |
 | Wake GPEs armed during halt | GPE0 enable bits read right after the halt, before ACPI changes them: the GPEs that could actually wake the machine. AppleACPIPlatform arms them from the devices' `_PRW` after the quiesce actions (#7) |
 | Display DMC firmware / at sleep / at wake action | Whether a display microcontroller image is in program RAM, with the raw values. On Tiger Lake only, it also names the image when program[0] and SSP base both match: Apple's built-in (`0x0b004040`, `0x6fc0`) or Intel's `tgl_dmc_ver2_12` (`0x0c004040`, `0x86fc0`). At the wake action the display well is usually still off, so 0 there is expected |
 | Recent log | The kext's last 40 log lines (seconds since boot), published after each wake, at start and every minute |
@@ -151,6 +153,7 @@ On the HP EliteBook 840 G8 everything up to the fourth row works (0.4.0:
 | (default) | Intel Gen11/12 iGPU: at a Deep Idle wake, before any driver wakes, check whether the GPU kept its state and if so reset its engines, so the graphics driver finds the blank GPU it expects |
 | `-s0ixnogpureset` | never reset the GPU |
 | `-s0ixgpureset` | enable the wake-time GPU reset on Gen11/12 CPUs other than Tiger Lake (default there: off, untested) |
+| `-s0ixpwrbtnwake` | at the quiesce action, if PM1_EN.PWRBTN_EN is off: write 1 to PM1_STS.PWRBTN_STS (a stale status would wake at once), set PWRBTN_EN; at the active action put it back off. Only meaningful with a fixed-feature power button (`Power button` property) |
 | `-s0ixhpetfix` | when the HPET is stopped, set every disabled timer comparator that equals the main counter to `0xFFFFFFFF` (at start, before the `_DSM` entry, at wake); `GEN_CONF` and the counter are left alone. Lets the PMC enter S0i2.0 / SLP_S0 (FINDINGS §14). Without it the HPET is only read for `HPET comparator fix` |
 | `-s0ixhdapm` | Deep Idle only: before the `_DSM` entry, with 00:1f.3 already in D3hot, set PCI `PGCTL` (0x44) ADSPPGD=0 / LSRMD=1 and OR the `CGCTL` (0x48) clock-gating mask (`s0ixhdacg=`, default `0x003F01FF`); restore both saved values at wake before the drivers. `HDA PCI power state` shows the values |
 | `-s0ixwifipm` | experimental: let macOS's PCI layer put the Wi-Fi function into D3 for sleep (as Apple's drivers request), with its ACPI `_PS3` and config restore on wake |

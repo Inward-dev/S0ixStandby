@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.5.13 (unreleased)
+## 0.5.14 (unreleased)
+
+- New `PM1_EN during halt`: PM1_EN as macOS left it at the last step before
+  the Deep Idle halt and right after it, decoded (PWRBTN_EN, RTC_EN,
+  SLPBTN_EN). Shows whether the power button was armed when it didn't wake
+  the machine (#9).
+- New `Power button`: the FADT power-button model (fixed feature = PM1
+  PWRBTN_EN, or control method = a PNP0C0C device waking through its `_PRW`
+  GPE) and the FADT flags.
+- New `-s0ixpwrbtnwake` (experimental, opt-in): if macOS left PWRBTN_EN off
+  for the halt with a fixed-feature button, clear a stale PWRBTN_STS and set
+  PWRBTN_EN at the quiesce action; restored right after the halt.
+
+## 0.5.13 (2026-11-25)
 
 - New `-s0ixhpetfix` (experimental, opt-in): AppleHPET leaves the stopped
   HPET's comparators equal to its counter (all 0); that standing match keeps

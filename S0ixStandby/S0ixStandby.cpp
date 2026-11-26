@@ -33,6 +33,9 @@
 //                          clock-gating bits (0x003F01FF) and PGCTL (0x44) across
 //                          Deep Idle, restoring saved values on wake (s0ixhdacg=N
 //                          overrides the CGCTL OR mask)
+//              -s0ixpwrbtnwake  experimental: set PM1_EN.PWRBTN_EN for the Deep
+//                          Idle halt if macOS left it off (fixed-feature power
+//                          button), restored right after the halt
 //              -s0ixhpetfix  clear HPET comparators that equal the stopped main
 //                          counter (AppleHPET leaves them at 0), which keeps the
 //                          PMC from entering S0i2.0 / SLP_S0 (#11)
@@ -170,6 +173,7 @@ static const uint32_t kActionPriority = 0x8000;
 
 static const uint32_t kSleepTypeDeepIdle = 7;   // kIOPMSleepTypeDeepIdle
 static const uint16_t kPm1RtcEn = 1u << 10;      // PM1_EN.RTC_EN (ACPI fixed event)
+static const uint16_t kPm1PwrbtnEn = 1u << 8;    // PM1_EN.PWRBTN_EN / PM1_STS.PWRBTN_STS
 static const uint8_t  kCmosAie  = 1u << 5;       // RTC register B: alarm interrupt enable
 static inline uint8_t cmosRead(uint8_t reg) { outb(0x70, reg); return inb(0x71); }
 static inline void cmosWrite(uint8_t reg, uint8_t v) { outb(0x70, reg); outb(0x71, v); }
@@ -1117,6 +1121,17 @@ IOReturn S0ixStandby::callPlatformFunction(const OSSymbol *functionName, bool wa
 		if (functionName->isEqualTo("IOPlatformQuiesceAction")) {
 			trace(kTraceQuiesce);
 			if (rtcBlocked) outw(pm1EnPort, (uint16_t)(inw(pm1EnPort) & ~kPm1RtcEn));
+			if (pm1EnPort) {
+				pm1EnAtHalt = inw(pm1EnPort);
+				pwrbtnArmed = false;
+				if (pwrbtnWake && !(pm1EnAtHalt & kPm1PwrbtnEn)) {
+					// Clear a stale PWRBTN_STS first (write 1), or the SCI would
+					// wake the CPU at once; restored at the active action.
+					if (pm1StsPort) outw(pm1StsPort, kPm1PwrbtnEn);
+					outw(pm1EnPort, (uint16_t)(pm1EnAtHalt | kPm1PwrbtnEn));
+					pwrbtnArmed = true;
+				}
+			}
 			if (ecArm) {
 				// Last thing before the halt: macOS has set up its wake GPEs.
 				uint16_t p = (uint16_t)(gpe0EnPort + ecGpe / 8);
@@ -1142,9 +1157,15 @@ IOReturn S0ixStandby::callPlatformFunction(const OSSymbol *functionName, bool wa
 			// Right after the halt: the PMC's latched LPM status (latched at
 			// package C10 entry by default) shows the state during the sleep.
 			if (cstateMask && tscAtQuiesce) { readHalt(haltAtActive); tscAtActive = rdtsc(); haltValid = true; }
+			if (pm1EnPort) {
+				pm1EnAtWake = inw(pm1EnPort);
+				// Put PWRBTN_EN back as macOS had it.
+				if (pwrbtnArmed) outw(pm1EnPort, (uint16_t)(pm1EnAtWake & ~kPm1PwrbtnEn));
+			}
 			if (gpe0StsPort) {
 				// What woke the CPU: status bits are still set here (cleared later by ACPI).
 				pm1StsAtWake = pm1StsPort ? inw(pm1StsPort) : 0;
+
 				for (uint32_t i = 0; i < gpe0Half && i < sizeof(gpe0StsAtWake); i++) {
 					gpe0StsAtWake[i] = inb((uint16_t)(gpe0StsPort + i));
 					gpe0EnAtWake[i] = inb((uint16_t)(gpe0EnPort + i));
@@ -1429,6 +1450,22 @@ void S0ixStandby::setupWakeInfo()
 	if (len >= 232 && f[220] == 1 && OSReadLittleInt64(f, 224))   // X_GPE0_BLK, SystemIO
 		gpe = OSReadLittleInt64(f, 224);
 	if (pm1 && pm1 < 0xFFFF) pm1StsPort = (uint16_t)pm1;
+	// PM1_EN is the second half of the PM1a event block (also set up by
+	// setupRtcBlock for -s0ixacnortc; the same port either way).
+	if (pm1 && f[88] >= 4 && pm1 + f[88] / 2 <= 0xFFFE && !pm1EnPort) pm1EnPort = (uint16_t)(pm1 + f[88] / 2);
+	if (len >= 116) {
+		fadtFlags = OSReadLittleInt32(f, 112);
+		fadtFlagsValid = true;
+		// FADT flag 4 PWR_BUTTON: 0 = fixed-feature button (PM1 PWRBTN_STS/EN),
+		// 1 = control-method button (a PNP0C0C device that wakes through its _PRW GPE).
+		char pb[200];
+		snprintf(pb, sizeof(pb), "%s; FADT flags 0x%08x (LOW_POWER_S0_IDLE %s)",
+		         (fadtFlags & (1u << 4)) ? "control method (PNP0C0C device, wakes through its _PRW GPE)"
+		                                 : "fixed feature (PM1 PWRBTN_EN arms the wake)",
+		         fadtFlags, (fadtFlags & (1u << 21)) ? "yes" : "no");
+		setProperty("Power button", pb);
+	}
+	pwrbtnWake = bootArg("-s0ixpwrbtnwake");
 	if (gpe && gpe + gpeLen <= 0xFFFF && gpeLen >= 2 && !(gpeLen & 1)) {
 		gpe0StsPort = (uint16_t)gpe;
 		gpe0Half = gpeLen / 2;
@@ -1507,6 +1544,14 @@ void S0ixStandby::publishWakeInfo()
 			}
 	if (!n) snprintf(buf, sizeof(buf), "none latched (PM1_STS 0x%04x)", pm1StsAtWake);
 	setProperty("Last wake source", buf);
+
+	if (pm1EnPort) {
+		snprintf(buf, sizeof(buf), "0x%04x at the halt (PWRBTN_EN %s, RTC_EN %s, SLPBTN_EN %s), 0x%04x after%s",
+		         pm1EnAtHalt, (pm1EnAtHalt & kPm1PwrbtnEn) ? "on" : "OFF", (pm1EnAtHalt & kPm1RtcEn) ? "on" : "off",
+		         (pm1EnAtHalt & (1u << 9)) ? "on" : "off", pm1EnAtWake,
+		         pwrbtnArmed ? "; PWRBTN_EN set by -s0ixpwrbtnwake" : "");
+		setProperty("PM1_EN during halt", buf);
+	}
 
 	// GPE0_EN as it was during the halt (read before ACPI touches it at wake).
 	// macOS arms the wake GPEs from the devices' _PRW; a bit set by hand at the

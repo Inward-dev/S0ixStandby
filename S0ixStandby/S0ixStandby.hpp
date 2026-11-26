@@ -274,6 +274,12 @@ private:
 	uint32_t ecGpe {0xFFFFFFFF};           // EC _GPE number, if a GPE0 bit
 	uint8_t ecEnAtHalt {0};                // EC GPE enable bit as macOS left it at the halt
 	uint16_t pm1StsAtWake {0};
+	// PM1_EN around the halt and the FADT power-button model: shows whether
+	// the fixed-feature power button (PWRBTN_EN) was armed for the wake.
+	uint16_t pm1EnAtHalt {0}, pm1EnAtWake {0};
+	uint32_t fadtFlags {0};
+	bool fadtFlagsValid {false};
+	bool pwrbtnWake {false}, pwrbtnArmed {false};   // -s0ixpwrbtnwake
 	uint8_t gpe0StsAtWake[16] {};
 	uint8_t gpe0EnAtWake[16] {};          // GPE0_EN right after the halt: what was armed
 	uint32_t ecWakeCount {0};

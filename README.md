@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.13.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.14.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -93,6 +93,7 @@ XCPM stops at core C6 in Deep Idle; with Ice Lake it reaches C10
 | `-s0ixnogpureset` | never reset the iGPU at wake |
 | `-s0ixgpureset` | reset the iGPU at Deep Idle wake on Gen11/12 CPUs other than Tiger Lake too (off there by default, untested) |
 | `-s0ixwifipm` | experimental: Wi-Fi PCI function to D3 for sleep through IOPCIFamily (CNVi blocker work) |
+| `-s0ixpwrbtnwake` | experimental: if the power button doesn't wake from Deep Idle and `PM1_EN during halt` shows `PWRBTN_EN OFF` with `Power button = fixed feature`, set PWRBTN_EN for the halt (restored right after it) |
 | `-s0ixhpetfix` | experimental: clear HPET comparators that equal the stopped HPET counter. AppleHPET leaves them all at 0, and that standing match keeps the PMC from entering S0i2.0, so **SLP_S0 stays 0 at PC10 99 %**. With it, the X1 Yoga Gen 7 (ADL-P) counted real SLP_S0 for 99 %+ of its sleeps ([#11](https://github.com/labrouss/S0ixStandby/pull/11), brandonedley; FINDINGS §14). Without the boot-arg the HPET is only read: `HPET comparator fix` in `s0ix-status.sh` shows whether the match is there |
 | `-s0ixhdapm` | experimental: during Deep Idle, set the Intel HDA (00:1f.3) clock-gating bits in PCI `CGCTL` (0x48), which AppleHDAController leaves at 0, and restore them at wake. Saved ~0.4–0.6 W of sleep power on the X1 Yoga Gen 7 with audio working ([#10](https://github.com/labrouss/S0ixStandby/pull/10), brandonedley). `s0ixhdacg=0xNNNNNNNN` sets the mask (default `0x003F01FF`) |
 | `-s0ixecwake` | experimental: keep the embedded controller's GPE armed during Deep Idle, so EC events can wake the machine: on many laptops (HP 840 G8 included) **opening the lid** is an EC event (`_Qxx` → `Notify(LID)`), and the lid device has no `_PRW`, so macOS leaves that GPE off and only the power button wakes. Other EC events (battery, AC, thermal) may then cause extra dark wakes: check `EC wakes` and `Last wake source` in `s0ix-status.sh`. `s0ixecgpe=0xNN` sets the EC's GPE number if it isn't found (HP 840 G8: `0x6e`). **HP 840 G8: no lid wake with it** (the lid's EC event is latched during standby but only delivered once the power button wakes the machine); kept for other laptops |
