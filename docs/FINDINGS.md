@@ -596,6 +596,12 @@ probably the same cause as the HP 840 G8's missing SLP_S0 (§11).
   S0i3.0). With audio loaded, Intel HDA `CGCTL` = 0 (as AppleHDAController
   leaves it) still blocks `AC_Ring_Osc_OFF` and costs ~0.4–0.6 W; Linux keeps
   `0x003F01FF` there (#10).
+- **Raptor Lake-U confirmed** (Ivanfangsc, ThinkPad X1 Carbon Gen 11, vPro,
+  #13): `-s0ixhpetfix` cleared the same 4 comparators, but SLP_S0 stayed 0
+  until the AMT Serial-over-LAN function 00:16.3 was put into D3hot (macOS's
+  Apple16X50Serial keeps it in D0, so CSME doesn't power gate; Linux puts it
+  in D3hot at suspend). With both: SLP_S0 99.4 % of a 72 s halt. 0.5.14 adds
+  `-s0ixsold3` for that.
 - In S0ixStandby (0.5.13): `-s0ixhpetfix` clears the matching comparators
   (only disabled timers, only while the HPET is stopped; `GEN_CONF` and
   `MAIN_CNT` untouched) at start, before the `_DSM` entry and at wake.

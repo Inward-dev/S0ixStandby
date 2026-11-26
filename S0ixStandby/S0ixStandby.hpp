@@ -179,6 +179,8 @@ private:
 		uint32_t gpuVerdict, gpuResetResult, gpuResetUs, gpuEnginesReady;
 		uint16_t wifiPmcsrSleep, wifiPmcsrWake;
 		bool hdaValid;
+		bool solValid, solRestored;
+		uint16_t solPmBefore, solPmHalt, solPmWake;
 		uint16_t hdaPmSleep, hdaPmWake;
 		uint32_t hdaPgSaved, hdaPgAfter, hdaCgSaved, hdaCgAfter;
 		DispState dispAtSleep, dispAtWake;
@@ -256,6 +258,19 @@ private:
 	uint32_t hdaPgSaved {0}, hdaPgAfter {0}, hdaCgSaved {0}, hdaCgAfter {0};
 	bool hdaTouched {false}, hdaSleepValid {false};
 	void setupHdaPM();
+	// -s0ixsold3: Intel AMT Serial-over-LAN function (00:16.3, class 0x0700)
+	// to D3hot for the Deep Idle halt and back to D0 at wake. macOS's
+	// Apple16X50Serial keeps it in D0, which keeps CSME from power gating and
+	// SLP_S0 at 0 on vPro machines (#13).
+	bool solPM {false};
+	IOPCIDevice *solDev {nullptr};
+	UInt8 solPmCap {0};
+	uint16_t solDid {0}, solPmBefore {0xFFFF}, solPmHalt {0xFFFF}, solPmWake {0xFFFF};
+	uint32_t solCfg[16] {};
+	bool solTouched {false}, solSleepValid {false}, solRestored {false};
+	void setupSolPM();
+	void solSleep();
+	void solWake();
 	void hdaSleep();
 	void hdaWake();
 

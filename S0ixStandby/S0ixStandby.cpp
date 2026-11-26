@@ -36,6 +36,8 @@
 //              -s0ixpwrbtnwake  experimental: set PM1_EN.PWRBTN_EN for the Deep
 //                          Idle halt if macOS left it off (fixed-feature power
 //                          button), restored right after the halt
+//              -s0ixsold3  AMT Serial-over-LAN (00:16.3) to D3hot for the
+//                          Deep Idle halt, back to D0 at wake (#13)
 //              -s0ixhpetfix  clear HPET comparators that equal the stopped main
 //                          counter (AppleHPET leaves them at 0), which keeps the
 //                          PMC from entering S0i2.0 / SLP_S0 (#11)
@@ -342,6 +344,7 @@ bool S0ixStandby::start(IOService *provider)
 	gpuResetForced = bootArg("-s0ixgpureset");
 	wifiPM = bootArg("-s0ixwifipm");
 	hdaCgMask = bootArg("-s0ixhdapm") ? 0x003F01FFu : 0u;
+	solPM = bootArg("-s0ixsold3");
 	{ uint32_t m = 0; if (PE_parse_boot_argn("s0ixhdacg", &m, sizeof(m))) hdaCgMask = m; }
 	refclkWA = bootArg("-s0ixrefclk");
 	acNoRtc = bootArg("-s0ixacnortc");
@@ -544,6 +547,7 @@ void S0ixStandby::free()
 	OSSafeReleaseNULL(wifiTimer);
 	OSSafeReleaseNULL(wifiDev);
 	OSSafeReleaseNULL(hdaDev);
+	OSSafeReleaseNULL(solDev);
 	OSSafeReleaseNULL(acTimer);
 	OSSafeReleaseNULL(battTimer);
 	OSSafeReleaseNULL(workLoop);
@@ -1091,6 +1095,87 @@ void S0ixStandby::hdaWake()
 		hdaTouched = false;
 	}
 	hdaPmWake = hdaDev->configRead16(hdaPmCap + 4);
+}
+
+// ---------------------------------------------------------------------------
+// -s0ixsold3: AMT Serial-over-LAN (00:16.3) in D3hot for the halt
+// ---------------------------------------------------------------------------
+// Idea and measurements: Ivanfangsc (#13, ThinkPad X1 Carbon Gen 11, RPL-U):
+// with 00:16.3 in D0 (Apple16X50Serial) SLP_S0 stayed 0; in D3hot, 99.4 %.
+
+void S0ixStandby::setupSolPM()
+{
+	if (solDev) return;
+	OSDictionary *match = serviceMatching("IOPCIDevice");
+	OSIterator *it = match ? getMatchingServices(match) : nullptr;
+	OSSafeReleaseNULL(match);
+	if (!it) return;
+	while (OSObject *o = it->getNextObject()) {
+		IOPCIDevice *dev = OSDynamicCast(IOPCIDevice, o);
+		if (!dev || dev->getBusNumber() != 0 || dev->getDeviceNumber() != 0x16 || dev->getFunctionNumber() != 3)
+			continue;
+		uint32_t id = dev->configRead32(kIOPCIConfigVendorID);
+		uint32_t cls = dev->configRead32(kIOPCIConfigClassCode) >> 16;   // base class << 8 | subclass
+		if ((id & 0xFFFF) != 0x8086 || (cls >> 8) != 0x07)              // simple communications (serial)
+			continue;
+		UInt8 pm = 0;
+		if (!dev->findPCICapability(kIOPCIPowerManagementCapability, &pm) || !pm)
+			continue;
+		dev->retain();
+		solDev = dev;
+		solPmCap = pm;
+		solDid = (uint16_t)(id >> 16);
+		break;
+	}
+	it->release();
+	char buf[128];
+	if (solDev)
+		snprintf(buf, sizeof(buf), "00:16.3 8086:%04x: on (-s0ixsold3), now D%u (PMCSR 0x%04x)",
+		         solDid, solDev->configRead16(solPmCap + 4) & 3, solDev->configRead16(solPmCap + 4));
+	else
+		snprintf(buf, sizeof(buf), "no Intel serial (AMT SOL) function at 00:16.3");
+	setProperty("SOL PCI PM", buf);
+}
+
+void S0ixStandby::solSleep()
+{
+	solTouched = false;
+	solSleepValid = false;
+	solRestored = false;
+	if (!solPM || !solDev || !solPmCap) return;
+	solPmBefore = solDev->configRead16(solPmCap + 4);
+	if (solPmBefore == 0xFFFF) return;
+	if ((solPmBefore & 3) == 0) {
+		// Keep the header: if the function has No_Soft_Reset = 0, D3hot -> D0
+		// resets it and its driver would find the BARs gone.
+		for (uint32_t i = 0; i < 16; i++) solCfg[i] = solDev->configRead32((UInt8)(i * 4));
+		// D3hot; bit 15 (PME_Status) is write-1-to-clear, so write it as 0.
+		solDev->configWrite16(solPmCap + 4, (uint16_t)((solPmBefore & ~0x8003u) | 3u));
+		solTouched = true;
+	}
+	solPmHalt = solDev->configRead16(solPmCap + 4);
+	solSleepValid = true;
+}
+
+void S0ixStandby::solWake()
+{
+	if (!solDev || !solPmCap) return;
+	if (solTouched) {
+		solDev->configWrite16(solPmCap + 4, (uint16_t)(solDev->configRead16(solPmCap + 4) & ~0x8003u));
+		IODelay(10000);   // PCI PM: 10 ms from D3hot to D0
+		// Restore BARs, interrupt line and command if the function was reset.
+		bool reset = false;
+		for (uint32_t i = 4; i <= 9; i++)
+			if (solDev->configRead32((UInt8)(i * 4)) != solCfg[i]) reset = true;
+		if (reset) {
+			for (uint32_t i = 4; i <= 9; i++) solDev->configWrite32((UInt8)(i * 4), solCfg[i]);
+			solDev->configWrite32(0x3C, solCfg[15]);
+			solDev->configWrite16(0x04, (uint16_t)solCfg[1]);
+			solRestored = true;
+		}
+		solTouched = false;
+	}
+	solPmWake = solDev->configRead16(solPmCap + 4);
 }
 
 
@@ -1679,6 +1764,7 @@ void S0ixStandby::battTimerFired(OSObject *owner, IOTimerEventSource *sender)
 			if (self->ecGpe != 0xFFFFFFFF) self->publishEcWake();
 		}
 		if (self->hdaCgMask) self->setupHdaPM();
+		if (self->solPM) self->setupSolPM();
 		self->publishLog();
 		sender->setTimeoutMS(60000);
 	}
@@ -1707,6 +1793,7 @@ void S0ixStandby::onSleep()
 	// Drivers (and IOPCIFamily's D3 transition) are done by now.
 	wifiPmcsrSleep = wifiDev ? wifiDev->configRead16(wifiPmCap + 4) : 0xFFFF;
 	if (lastSleepType == kSleepTypeDeepIdle) hdaSleep();
+	if (lastSleepType == kSleepTypeDeepIdle) solSleep();
 
 	if (lastSleepType == kSleepTypeDeepIdle && hpetFixEnabled && hpetReg) hpetClearMatches(nullptr, true);
 	entered = false;
@@ -1761,6 +1848,7 @@ void S0ixStandby::onWake()
 		entered = false;
 	}
 	hdaWake();
+	solWake();
 	// Before any driver wakes: Apple's accelerator restarts the engines later.
 	if (gpuMMIO) {
 		dispCapture(dispAtWake, &dispAtSleep);
@@ -1795,6 +1883,8 @@ void S0ixStandby::onWake()
 	snap.gpuResetUs = gpuResetUs; snap.gpuEnginesReady = gpuEnginesReady;
 	snap.wifiPmcsrSleep = wifiPmcsrSleep; snap.wifiPmcsrWake = wifiPmcsrWake;
 	snap.hdaValid = hdaSleepValid;
+	snap.solValid = solSleepValid; snap.solPmBefore = solPmBefore;
+	snap.solPmHalt = solPmHalt; snap.solPmWake = solPmWake; snap.solRestored = solRestored;
 	snap.hdaPmSleep = hdaPmSleep; snap.hdaPmWake = hdaPmWake;
 	snap.hdaPgSaved = hdaPgSaved; snap.hdaPgAfter = hdaPgAfter;
 	snap.hdaCgSaved = hdaCgSaved; snap.hdaCgAfter = hdaCgAfter;
@@ -1925,6 +2015,13 @@ void S0ixStandby::publish()
 	publishDisplay();
 	publishLog();
 	if (hpetReg) { uint32_t m = 0; hpetClearMatches(&m, false); publishHpet(m); }
+	if (solDev && snap.solValid) {
+		char t[200];
+		snprintf(t, sizeof(t), "00:16.3 8086:%04x: D%u (0x%04x) before sleep, D%u (0x%04x) during the halt, D%u (0x%04x) after wake%s",
+		         solDid, snap.solPmBefore & 3, snap.solPmBefore, snap.solPmHalt & 3, snap.solPmHalt,
+		         snap.solPmWake & 3, snap.solPmWake, snap.solRestored ? "; config header restored after D0" : "");
+		setProperty("SOL PCI power state", t);
+	}
 	if (hdaDev && snap.hdaValid) {
 		char h[180];
 		snprintf(h, sizeof(h), "00:1f.3 8086:%04x: PMCSR D%u(0x%04x)/D%u(0x%04x), PGCTL 0x%08x->0x%08x, CGCTL 0x%08x->0x%08x",

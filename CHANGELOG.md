@@ -2,6 +2,15 @@
 
 ## 0.5.14 (unreleased)
 
+- New `-s0ixsold3` (experimental, opt-in): the Intel AMT Serial-over-LAN
+  function (00:16.3) goes to D3hot for the Deep Idle halt and back to D0 at
+  wake (config header restored if it was reset). Apple16X50Serial keeps it
+  in D0, which keeps CSME from power gating: on a ThinkPad X1 Carbon Gen 11
+  (RPL-U, vPro) SLP_S0 stayed 0 with `-s0ixhpetfix -s0ixhdapm` and reached
+  99.4 % with SOL in D3hot. Found by Ivanfangsc (#13). `SOL PCI power state`.
+- SLP_S0 blocker report for Alder Lake-P/H/U (CPU model 0x9A) and Raptor
+  Lake-P/H/U (0xBA): same PMC power-gating map as Tiger Lake, as in Linux
+  `intel_pmc_core` (#13).
 - New `PM1_EN during halt`: PM1_EN as macOS left it at the last step before
   the Deep Idle halt and right after it, decoded (PWRBTN_EN, RTC_EN,
   SLPBTN_EN). Shows whether the power button was armed when it didn't wake
