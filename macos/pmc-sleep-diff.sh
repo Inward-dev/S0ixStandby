@@ -30,6 +30,9 @@ fi
 echo "Awake-idle rates (10 s, don't touch the machine)..."
 "$PMTEL" rate 10 "$GROUP" "$SUB" > "$OUT/awake-rate.txt"
 
+# A scheduled macOS wake (maintenance, calendar) inside the test ends it early.
+echo "Scheduled wakes (one within $SECS s would end the sleep early):"
+pmset -g sched | sed 's/^/  /'
 echo "Sleeping for $SECS s with an RTC wake. Hands off until it wakes."
 WT0=$(sysctl -n kern.waketime)
 "$PMTEL" snap "$GROUP" "$SUB" > "$OUT/before.txt"

@@ -8,6 +8,12 @@
   Raptor Lake-U. `-s0ixnohpetfix` and `-s0ixnosold3` turn them off
   (`-s0ixhpetfix` / `-s0ixsold3` are no longer needed). The SOL search runs
   once; machines without an Intel serial function at 00:16.3 are unaffected.
+- New `s0ixhdapg=0xNN` (with `-s0ixhdapm`): the HDA `PGCTL` value for the
+  halt, instead of ADSPPGD=0 / LSRMD=1; `0` lets HDA power gate, one of the
+  two S0i3.0 requirements macOS misses on the X1 Yoga Gen 7 (#7).
+- `pmc-sleep-diff.sh` lists the scheduled wakes first: a macOS maintenance
+  wake (`pmset -g sched`) inside the test ends it early. TESTING.md: how to
+  read the battery gauge around a short sleep (brandonedley, #7).
 - README: SLP_S0 moved from the limitations to what works.
 
 ## 0.5.14 (2026-11-26)

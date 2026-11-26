@@ -179,6 +179,15 @@ remove candidates one at a time (VoodooI2C first if the touchpad may be
 polling) and repeat the diff; or boot Linux, run `rtcwake -m freeze -s 60`
 and read `/sys/kernel/debug/pmc_core/substate_status_registers` and `ltr_show`.
 
+### Measuring a short sleep with the battery gauge
+
+(brandonedley, #7) AppleSmartBattery refreshes about every 60 s
+(`UpdateTime` in `ioreg -rn AppleSmartBattery`), so a reading taken just
+before a sleep can be a minute old. Wait for `UpdateTime` to change, sleep at
+once, and after the wake use the first reading newer than the wake. Check
+`pmset -g sched` first: a macOS maintenance wake inside the test ends the
+sleep early.
+
 ## Wake failure protocol
 
 For every sleep test, especially long ones (30 min+), note the answers below.

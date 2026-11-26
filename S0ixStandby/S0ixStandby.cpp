@@ -347,6 +347,9 @@ bool S0ixStandby::start(IOService *provider)
 	solPM = !bootArg("-s0ixnosold3");   // on by default since 0.5.15
 	if (!solPM) setProperty("SOL PCI PM", "off (-s0ixnosold3)");
 	{ uint32_t m = 0; if (PE_parse_boot_argn("s0ixhdacg", &m, sizeof(m))) hdaCgMask = m; }
+	// s0ixhdapg=0xNN: PGCTL value for the halt instead of ADSPPGD=0/LSRMD=1
+	// (HDA power gating for S0i3.0, brandonedley #7); needs -s0ixhdapm.
+	{ uint32_t v = 0; if (PE_parse_boot_argn("s0ixhdapg", &v, sizeof(v))) { hdaPgValue = v; hdaPgSet = true; } }
 	refclkWA = bootArg("-s0ixrefclk");
 	acNoRtc = bootArg("-s0ixacnortc");
 	ecWake = bootArg("-s0ixecwake");
@@ -1077,7 +1080,7 @@ void S0ixStandby::hdaSleep()
 	hdaCgSaved = hdaCgAfter = hdaDev->configRead32(0x48);
 	// PCI config space remains writable in D3hot: clear PGCTL.ADSPPGD (b2),
 	// set PGCTL.LSRMD (b4), and restore Intel PCH CGCTL clock-gating bits.
-	const uint32_t wantPg = (hdaPgSaved & ~(1u << 2)) | (1u << 4);
+	const uint32_t wantPg = hdaPgSet ? hdaPgValue : ((hdaPgSaved & ~(1u << 2)) | (1u << 4));
 	const uint32_t wantCg = hdaCgSaved | hdaCgMask;
 	if (wantPg != hdaPgSaved) hdaDev->configWrite32(0x44, wantPg);
 	if (wantCg != hdaCgSaved) hdaDev->configWrite32(0x48, wantCg);

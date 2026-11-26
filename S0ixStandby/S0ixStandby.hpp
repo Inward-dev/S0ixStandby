@@ -257,6 +257,8 @@ private:
 	uint16_t hdaDid {0}, hdaPmSleep {0xFFFF}, hdaPmWake {0xFFFF};
 	uint32_t hdaPgSaved {0}, hdaPgAfter {0}, hdaCgSaved {0}, hdaCgAfter {0};
 	bool hdaTouched {false}, hdaSleepValid {false};
+	uint32_t hdaPgValue {0};
+	bool hdaPgSet {false};
 	void setupHdaPM();
 	// -s0ixsold3: Intel AMT Serial-over-LAN function (00:16.3, class 0x0700)
 	// to D3hot for the Deep Idle halt and back to D0 at wake. macOS's
