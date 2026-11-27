@@ -8,7 +8,7 @@ sleeps in **Deep Idle** (the S0 sleep built into XNU) with the Modern Standby
 
 [![build](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml/badge.svg)](https://github.com/labrouss/S0ixStandby/actions/workflows/build.yml)
 
-**Status: pre-release 0.5.16.** Generic: any Intel laptop with an ACPI LPS0
+**Status: pre-release 0.5.17.** Generic: any Intel laptop with an ACPI LPS0
 device (`PNP0D80`); **not AMD** (see [Platform support](#platform-support)). Built and released by GitHub Actions only. First test machine:
 HP EliteBook 840 G8 (Tiger Lake), macOS Tahoe 26.7.1, OpenCore 1.0.8.
 **Testers with other laptops wanted**, see [Testing](#testing-wanted).
@@ -80,7 +80,7 @@ XCPM stops at core C6 in Deep Idle; with Ice Lake it reaches C10
 | Intel Tiger Lake (tested), other Intel with LPS0 | supported; the wake-time iGPU reset is on by default on Tiger Lake only. Reports: i7-1185G7 (HP EliteBook 840 G8), i5-11300H / TGL-H35 (MECHREVO Forza 6, internal display, [#3](https://github.com/labrouss/S0ixStandby/issues/3)) |
 | Intel Kaby Lake R, Apple graphics (report) | Lenovo Yoga C930-13IKB, i7-8550U, UHD 620 ([#6](https://github.com/labrouss/S0ixStandby/issues/6)), macOS 15.8.3: Deep Idle sleep and wake by power button, keyboard and lid work with no extra flags; hourly dark wakes clean. Battery drain is high (~4.4 %/h) because the package stays in **PC3** for the whole sleep (`Last C-state percent` PC3 = 100 %); the blocker isn't known yet. Lid and keyboard wake arrive as power-button events. The GT reset is off (Gen11/12 only) |
 | Intel Alder Lake-P with WhateverXe (report) | Lenovo ThinkBook 14+ 2022, i5-12500H, 8086:46A6 ([#4](https://github.com/labrouss/S0ixStandby/issues/4)): Deep Idle sleep and wake with Metal work using WhateverXe 0.8.3's `-wex-s0-csb-resync` (WhateverXe #117) and **without** `-s0ixgpureset`. Lid wake needed a `_PRW` for `LID0` on the EC GPE (see SSDT-LIDWAKE) |
-| Intel Raptor Lake-U, vPro (report) | Lenovo ThinkPad X1 Carbon Gen 11, i7-1365U, 8086:A7A1 ([#13](https://github.com/labrouss/S0ixStandby/issues/13)), WhateverXe: **real SLP_S0 99.4 %** of a 72 s sleep with the HPET fix, `-s0ixhdapm` and the AMT SOL function 00:16.3 in D3hot (both now default); without SOL in D3hot SLP_S0 stays 0 |
+| Intel Raptor Lake-U, vPro (report) | Lenovo ThinkPad X1 Carbon Gen 11, i7-1365U, 8086:A7A1 ([#13](https://github.com/labrouss/S0ixStandby/issues/13)), WhateverXe: **real SLP_S0 98–99 %** with 0.5.16's defaults (HPET fix, AMT SOL 00:16.3 in D3hot) plus `-s0ixhdapm`, no SSDT or extra kext; without SOL in D3hot SLP_S0 stays 0. The serial port works after wake |
 | Alder / Raptor Lake package stuck at PC2/PC3 | One known cause: the Intel `_DSM` fn 5 sets the Type-C IOM's DPOF bit, which on some ADL/RPL machines holds the package at PC2/PC3 until a reboot ([FINDINGS §13](docs/FINDINGS.md), #7). Try `s0ixfn=0x198` from a fresh boot, or rename the TCSS SSDT's `DPOF` field. Fixed it on a ThinkPad X1 Yoga Gen 7 (ADL-P), **not** on a ThinkPad E16 Gen 3 (RPL-H), where the PMC counters point to a PCH-side device active during the halt (FINDINGS §13.1). To see which side blocks on your machine, use the PMC telemetry diff in [TESTING.md](docs/TESTING.md#finding-what-blocks-pc10-pmc-telemetry-diff). Tiger Lake isn't affected |
 | Intel Ice Lake / Alder Lake / Raptor Lake iGPU | sleep path generic; the iGPU reset stays off unless `-s0ixgpureset` (untested there, e.g. with NootedGreen) |
 | **AMD** | **not supported.** XNU's Deep Idle halt (`pmCPUHalt(PM_HALT_SLEEP)`, xnu `osfmk/i386/pmCPU.c`) needs a CPU power-management halt handler (Intel XCPM / AppleIntelCPUPowerManagement); without one it stops the CPU with interrupts off and it never wakes, with or without the `_DSM` calls. Don't install SSDT-DEEPIDLE on AMD. From 0.5.0 the kext detects AMD and stays out of the sleep path |
@@ -171,7 +171,7 @@ make DEBUG=1  # build/Debug/S0ixStandby.kext
 | [docs/HIBERNATION-FALLBACK.md](docs/HIBERNATION-FALLBACK.md) | Parallel track: hibernate-to-disk as a fallback |
 | [docs/UPSTREAM-WHATEVERXE.md](docs/UPSTREAM-WHATEVERXE.md) | Report for WhateverXe: why acceleration failed after Deep Idle |
 | [CHANGELOG.md](CHANGELOG.md) | Versions |
-| `macos/` | `s0ix-status.sh`, `wake-report.sh`, `lpm-status.sh`, `sleep-power-test.sh`, `check-deepidle.sh`, `pmc-dump.sh`, `pmc-sleep-diff.sh` (PMC counters across one sleep) |
+| `macos/` | `s0ix-status.sh`, `wake-report.sh`, `lpm-status.sh`, `sleep-power-test.sh`, `check-deepidle.sh`, `pmc-dump.sh`, `pmc-sleep-diff.sh` (PMC counters across one sleep), `sleep-loop.sh` (repeated RTC sleeps with a log per round) |
 | `linux/` | `s2idle-test.sh`, `capture-baseline.sh` (reference measurements under Linux) |
 | `S0ixStandby/` | Kext source |
 | `tools/` | `privacy-scan.sh` (CI), `redact.sh` (used by the capture scripts), `find-bst.py` (OpenCore `_BST` rename for SSDT-BATFULL), `pmtel.c` (IOReport counter reader, used by `pmc-sleep-diff.sh`) |

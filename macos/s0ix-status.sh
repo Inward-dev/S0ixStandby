@@ -35,7 +35,11 @@ if [ -n "$BT" ] && [ "$BT" -gt 1000000000 ]; then
 fi
 echo "Live (awake, every 10 s; many IPs are normally on while awake):"
 echo "$P" | grep '"Live SLP_S0 blockers"' | sed 's/.*= (//; s/)$//; s/"//g; s/^/  /' || true
-echo "Likely SLP_S0 blockers (IPs still powered at the halt):"
+if echo "$P" | grep -Eq '"Last residency us" = [1-9]'; then
+  echo "IPs still powered at the halt (SLP_S0 was reached, so they didn't block it; may matter for S0i3.0):"
+else
+  echo "Likely SLP_S0 blockers (IPs still powered at the halt):"
+fi
 echo "$P" | grep '"Last SLP_S0 blockers at halt"' | sed 's/.*= (//; s/)$//; s/"//g; s/^/  /' || true
 echo
 echo "== GPU (-s0ixgpuprobe / -s0ixgpureset)"

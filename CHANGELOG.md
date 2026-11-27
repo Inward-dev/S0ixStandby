@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.5.16 (unreleased)
+## 0.5.17 (unreleased)
+
+- New `macos/sleep-loop.sh`: repeats RTC-timed Deep Idle sleeps
+  (`sudo bash macos/sleep-loop.sh [seconds] [count] [pause]`) and logs per
+  round the battery, SLP_S0, C-states, wake source and sleep trace; stops at
+  the first new panic or GPU-restart report. The log is synced each round, so
+  after a hang it shows which round it was.
+- Blocker report: when the sleep reached SLP_S0, the IPs still powered at
+  the halt are no longer called likely blockers (log line and
+  `s0ix-status.sh`). CNVI shows up there on TGL, ADL-P and RPL-U with
+  SLP_S0 at 98-99 % (#13, #7); it matters for S0i3.0, not for SLP_S0.
+- Also README platform row for the ThinkPad X1 Carbon Gen 11: SLP_S0 98.4 %
+  with 0.5.16 defaults + `-s0ixhdapm`, no SSDT (#13).
+
+## 0.5.16 (2026-11-26)
 
 - New `-s0ixlanpm` (experimental, opt-in): every wired Ethernet function
   (PCI class 0x0200, any vendor) is released for the Deep Idle halt as

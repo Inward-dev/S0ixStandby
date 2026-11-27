@@ -288,6 +288,7 @@ private:
 	LanDev lan[kMaxLan] {};
 	uint32_t lanCount {0};
 	bool lanPM {false}, lanSearched {false}, lanSleepValid {false};
+	uint64_t lastResUs {0};   // SLP_S0 residency of the last sleep, for the blocker report
 	void setupLanPM();
 	void lanSleep();
 	void lanWake();

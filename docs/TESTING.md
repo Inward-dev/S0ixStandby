@@ -179,6 +179,15 @@ remove candidates one at a time (VoodooI2C first if the touchpad may be
 polling) and repeat the diff; or boot Linux, run `rtcwake -m freeze -s 60`
 and read `/sys/kernel/debug/pmc_core/substate_status_registers` and `ltr_show`.
 
+### Repeated sleeps
+
+`sudo bash macos/sleep-loop.sh 240 5 60` sleeps 5 times for 240 s (RTC wake)
+with 60 s awake in between, and writes `sleep-loop-<date>.log`: battery,
+SLP_S0, C-states, wake source and sleep trace per round. It stops at the
+first new `.panic` / `.gpuRestart`. After a hang the log ends at the round
+that hung; run `wake-report.sh` then. On battery (or without
+`-s0ixacnortc`), since that flag blocks RTC wakes on AC.
+
 ### Measuring a short sleep with the battery gauge
 
 (brandonedley, #7) AppleSmartBattery refreshes about every 60 s

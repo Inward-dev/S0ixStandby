@@ -21,4 +21,5 @@ MacKernelSDK/
 sleep-power-*.log
 wake-report-*.txt
 pmc-diff-*/
+sleep-loop-*.log
 tools/pmtel

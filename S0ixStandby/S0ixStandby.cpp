@@ -902,7 +902,10 @@ void S0ixStandby::publishBlockers()
 	for (uint32_t i = 0; i < gatingBytes && r + 1 < sizeof(raw); i++)
 		snAdd(r, sizeof(raw), snprintf(raw + r, sizeof(raw) - r, "%02x", b[i]));
 	setProperty("Last gating status at halt", raw);
-	LOG("IPs still powered at the Deep Idle halt (likely S0ix blockers):%s", n ? line : " none");
+	// With SLP_S0 counted for the sleep, whatever was still powered at the
+	// halt didn't block it (e.g. CNVI on TGL/ADL/RPL: it matters for S0i3.0).
+	LOG("IPs still powered at the Deep Idle halt (%s):%s",
+	    lastResUs ? "SLP_S0 reached, so not blocking it" : "likely S0ix blockers", n ? line : " none");
 }
 
 // ---------------------------------------------------------------------------
@@ -2184,6 +2187,7 @@ void S0ixStandby::publish()
 			d->release();
 		}
 	}
+	lastResUs = residencyUs;
 	publishBlockers();
 	publishGPU();
 	publishDisplay();
